@@ -84,3 +84,50 @@ async def end_session(room_name: str) -> None:
         await r.srem("active_rooms", room_name)
     finally:
         await r.aclose()
+
+
+async def hit_rate_limit(identity: str, limit: int, window_seconds: int = 60) -> bool:
+    """Count a ``/token`` call against a fixed-window per-user limit.
+
+    Args:
+        identity: The authenticated user.
+        limit: Maximum calls allowed per window.
+        window_seconds: Window length in seconds.
+
+    Returns:
+        ``True`` if this call exceeds the limit and should be rejected.
+    """
+    r = aioredis.from_url(settings.REDIS_URL)
+    try:
+        key = f"ratelimit:token:{identity}"
+        count = await r.incr(key)
+        if count == 1:
+            await r.expire(key, window_seconds)
+        return count > limit
+    finally:
+        await r.aclose()
+
+
+async def swap_active_room(identity: str, room_name: str) -> str | None:
+    """Record ``room_name`` as the user's only active room.
+
+    Enforces one live session per user: the caller ends the returned previous
+    room so abandoned tabs or scripted calls don't keep paid agents running.
+
+    Args:
+        identity: The authenticated user.
+        room_name: The newly created room.
+
+    Returns:
+        The previously active room name, or ``None``.
+    """
+    r = aioredis.from_url(settings.REDIS_URL)
+    try:
+        previous = await r.getset(f"user_room:{identity}", room_name)
+        await r.expire(f"user_room:{identity}", SESSION_TTL)
+        if previous is None:
+            return None
+        previous = previous.decode() if isinstance(previous, bytes) else previous
+        return previous if previous != room_name else None
+    finally:
+        await r.aclose()

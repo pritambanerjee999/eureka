@@ -22,6 +22,7 @@ os.environ.setdefault("LIVEKIT_URL", "wss://test.livekit.io")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
 os.environ.setdefault("OPENAI_API_KEY", "sk-test")
+os.environ.setdefault("JWT_SECRET", "test-jwt-secret-that-is-at-least-32-chars")
 
 # ---------------------------------------------------------------------------
 # 2. Make `backend/api` importable without a package prefix.
@@ -56,6 +57,9 @@ _livekit_api_instance.__aenter__ = AsyncMock(return_value=_livekit_api_instance)
 _livekit_api_instance.__aexit__ = AsyncMock(return_value=False)
 _livekit_api_mock.LiveKitAPI.return_value = _livekit_api_instance
 _livekit_api_mock.CreateAgentDispatchRequest = MagicMock()
+_livekit_api_mock.DeleteRoomRequest = MagicMock()
+_livekit_api_instance.room = MagicMock()
+_livekit_api_instance.room.delete_room = AsyncMock()
 
 sys.modules.setdefault("livekit", _livekit_mock)
 sys.modules.setdefault("livekit.api", _livekit_api_mock)

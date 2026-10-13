@@ -257,6 +257,17 @@ describe("Home page — token request", () => {
     await waitFor(() => expect(screen.getByText(/API error/i)).toBeInTheDocument());
   });
 
+  it("shows a friendly message when rate-limited", async () => {
+    routeFetch({ "/token": () => makeErrorResponse(429) });
+    await renderHome();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Why do things fall?"));
+    });
+
+    await waitFor(() => expect(screen.getByText(/starting sessions too quickly/i)).toBeInTheDocument());
+  });
+
   it("calls /token with __assess__ when Assess My Level is clicked", async () => {
     await renderHome();
 

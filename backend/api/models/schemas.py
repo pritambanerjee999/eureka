@@ -11,19 +11,38 @@ from pydantic import BaseModel, Field, field_validator
 
 _USERNAME_RE = re.compile(r"^[a-z0-9_-]{3,32}$")
 
+# Topic titles are short menu labels ("Why do things fall?", "E=mc²"). Anything
+# longer or with other punctuation/newlines is rejected before it can reach the
+# agent's LLM instructions.
+TOPIC_MAX_LEN = 80
+_TOPIC_RE = re.compile(r"^[\w &'?=²\-]+$")
+
+NOTES_MAX_LEN = 20_000
+
 
 class TokenRequest(BaseModel):
     """Request body for the ``/token`` endpoint.
 
+    The room name is always generated server-side so a client can never
+    request a token for someone else's room.
+
     Attributes:
-        room_name: Optional room name; a random one is generated if omitted.
         topic: Optional topic key selected by the user (e.g. ``"Light"``);
             ``"__open__"`` means free-form chat, ``"__assess__"`` triggers the
             level-calibration flow.
     """
 
-    room_name: str | None = None
-    topic: str | None = None
+    topic: str | None = Field(default=None, max_length=TOPIC_MAX_LEN)
+
+    @field_validator("topic")
+    @classmethod
+    def _validate_topic(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v or not _TOPIC_RE.match(v):
+            raise ValueError("Invalid topic")
+        return v
 
 
 class TokenResponse(BaseModel):
@@ -31,7 +50,7 @@ class TokenResponse(BaseModel):
 
     Attributes:
         token: A signed LiveKit JWT granting room access.
-        room_name: The resolved room name (generated or provided).
+        room_name: The server-generated room name.
         identity: The participant identity (the authenticated username).
         livekit_url: The LiveKit server WebSocket URL the client should connect to.
     """
@@ -77,8 +96,8 @@ class LoginRequest(BaseModel):
         password: The plaintext password.
     """
 
-    username: str
-    password: str
+    username: str = Field(max_length=64)
+    password: str = Field(max_length=128)
 
 
 class AuthResponse(BaseModel):
@@ -103,3 +122,13 @@ class UserResponse(BaseModel):
     """
 
     username: str
+
+
+class NotesRequest(BaseModel):
+    """Request body for ``PUT /notes/{identity}/{room_name}``.
+
+    Attributes:
+        content: The notes text, at most ``NOTES_MAX_LEN`` characters.
+    """
+
+    content: str = Field(default="", max_length=NOTES_MAX_LEN)

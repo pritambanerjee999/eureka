@@ -147,7 +147,7 @@ class TestPutNotes:
         client, conn = fresh_client
 
         resp = client.put(
-            "/notes/user-z/room-z",
+            "/notes/user-z/room-0000000a",
             json={"content": "Newton's first law notes"},
         )
 
@@ -163,7 +163,7 @@ class TestPutNotes:
         client, conn = fresh_client
 
         resp = client.put(
-            "/notes/user-w/room-w",
+            "/notes/user-w/room-0000000b",
             json={"content": "Energy is conserved"},
         )
 
@@ -176,12 +176,39 @@ class TestPutNotes:
         """PUT /notes with no 'content' key should default to empty string."""
         client, conn = fresh_client
 
-        resp = client.put("/notes/user-v/room-v", json={})
+        resp = client.put("/notes/user-v/room-0000000c", json={})
 
         assert resp.status_code == 200
         call_args = conn.execute.call_args[0]
         # The empty string should be one of the SQL parameters
         assert "" in call_args
+
+
+class TestNotesValidation:
+    @pytest.mark.parametrize("room", ["room-z", "anything", "room-XYZ12345", "room-" + "a" * 33])
+    def test_invalid_room_name_rejected(self, fresh_client, room):
+        """Only server-generated room names are accepted, so notes can't be spammed under arbitrary keys."""
+        client, conn = fresh_client
+        resp = client.put(f"/notes/alice/{room}", json={"content": "x"})
+        assert resp.status_code == 422
+        conn.execute.assert_not_called()
+
+    def test_legacy_and_current_room_names_accepted(self, fresh_client):
+        client, _ = fresh_client
+        assert client.put("/notes/alice/room-1a2b3c4d", json={"content": "x"}).status_code == 200
+        assert client.put("/notes/alice/room-" + "f" * 32, json={"content": "x"}).status_code == 200
+
+    def test_non_string_content_returns_422(self, fresh_client):
+        """A non-string content value is a validation error, not a 500."""
+        client, conn = fresh_client
+        assert client.put("/notes/alice/room-1a2b3c4d", json={"content": 123}).status_code == 422
+        conn.execute.assert_not_called()
+
+    def test_oversized_content_returns_422(self, fresh_client):
+        client, conn = fresh_client
+        resp = client.put("/notes/alice/room-1a2b3c4d", json={"content": "x" * 20_001})
+        assert resp.status_code == 422
+        conn.execute.assert_not_called()
 
 
 class TestHistoryAuth:
@@ -200,7 +227,7 @@ class TestHistoryAuth:
 
     @pytest.mark.parametrize(
         "method,path",
-        [("get", "/history/bob"), ("get", "/notes/bob"), ("put", "/notes/bob/room-1")],
+        [("get", "/history/bob"), ("get", "/notes/bob"), ("put", "/notes/bob/room-00000001")],
     )
     def test_other_users_data_is_forbidden(self, alice_client, method, path):
         """Accessing another user's history or notes should return 403 without touching the DB."""
@@ -217,7 +244,7 @@ class TestHistoryAuth:
 
     @pytest.mark.parametrize(
         "method,path",
-        [("get", "/history/alice"), ("get", "/notes/alice"), ("put", "/notes/alice/room-1")],
+        [("get", "/history/alice"), ("get", "/notes/alice"), ("put", "/notes/alice/room-00000001")],
     )
     def test_unauthenticated_requests_return_401(self, method, path):
         """Requests without a Bearer token should be rejected."""

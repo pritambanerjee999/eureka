@@ -176,3 +176,71 @@ class TestEndSession:
             await end_session("room-11")
 
         r.aclose.assert_called_once()
+
+
+class TestRateLimit:
+    @pytest.mark.asyncio
+    async def test_first_call_sets_window_and_allows(self):
+        r = _make_redis_mock()
+        r.incr = AsyncMock(return_value=1)
+        with patch("services.session_service.aioredis.from_url", return_value=r):
+            from services.session_service import hit_rate_limit
+
+            assert await hit_rate_limit("alice", 5) is False
+        r.incr.assert_awaited_once_with("ratelimit:token:alice")
+        r.expire.assert_awaited_once_with("ratelimit:token:alice", 60)
+        r.aclose.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_at_limit_allowed_over_limit_rejected(self):
+        r = _make_redis_mock()
+        with patch("services.session_service.aioredis.from_url", return_value=r):
+            from services.session_service import hit_rate_limit
+
+            r.incr = AsyncMock(return_value=5)
+            assert await hit_rate_limit("alice", 5) is False
+            r.incr = AsyncMock(return_value=6)
+            assert await hit_rate_limit("alice", 5) is True
+        r.expire.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_redis_error_propagates_and_closes(self):
+        r = _make_redis_mock()
+        r.incr = AsyncMock(side_effect=ConnectionError("down"))
+        with patch("services.session_service.aioredis.from_url", return_value=r):
+            from services.session_service import hit_rate_limit
+
+            with pytest.raises(ConnectionError):
+                await hit_rate_limit("alice", 5)
+        r.aclose.assert_awaited_once()
+
+
+class TestSwapActiveRoom:
+    @pytest.mark.asyncio
+    async def test_returns_previous_room(self):
+        r = _make_redis_mock()
+        r.getset = AsyncMock(return_value=b"room-old")
+        with patch("services.session_service.aioredis.from_url", return_value=r):
+            from services.session_service import swap_active_room
+
+            assert await swap_active_room("alice", "room-new") == "room-old"
+        r.getset.assert_awaited_once_with("user_room:alice", "room-new")
+        r.expire.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_no_previous_room(self):
+        r = _make_redis_mock()
+        r.getset = AsyncMock(return_value=None)
+        with patch("services.session_service.aioredis.from_url", return_value=r):
+            from services.session_service import swap_active_room
+
+            assert await swap_active_room("alice", "room-new") is None
+
+    @pytest.mark.asyncio
+    async def test_same_room_is_not_reported_as_previous(self):
+        r = _make_redis_mock()
+        r.getset = AsyncMock(return_value="room-new")
+        with patch("services.session_service.aioredis.from_url", return_value=r):
+            from services.session_service import swap_active_room
+
+            assert await swap_active_room("alice", "room-new") is None

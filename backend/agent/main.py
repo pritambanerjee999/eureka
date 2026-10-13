@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from livekit.agents import AgentSession, JobContext, WorkerOptions, cli
 from livekit.plugins import openai, silero
 
-from agent import PhysicsTutorAgent
+from agent import PhysicsTutorAgent, safe_topic
 from config import settings
 from services.conversation_service import load_room_turns, record_turn, turn_from_item
 from services.redis_service import get_session_identity, get_session_topic
@@ -38,7 +38,7 @@ async def entrypoint(ctx: JobContext) -> None:
     logger.info("Agent connected to room: %s", ctx.room.name)
 
     # Read the topic and identity the student set before joining
-    topic = await get_session_topic(ctx.room.name)
+    topic = safe_topic(await get_session_topic(ctx.room.name))
     identity = await get_session_identity(ctx.room.name)
     prior_turns = await load_room_turns(ctx.room.name)
     logger.info(
@@ -46,6 +46,8 @@ async def entrypoint(ctx: JobContext) -> None:
     )
 
     session = AgentSession(
+        # Cost guardrail: user_state becomes "away" after this much silence.
+        user_away_timeout=settings.USER_AWAY_SECONDS,
         vad=silero.VAD.load(),
         stt=openai.STT(model="whisper-1"),
         llm=openai.LLM(model="gpt-4o"),
@@ -79,6 +81,42 @@ async def entrypoint(ctx: JobContext) -> None:
             role, text = turn
             asyncio.create_task(record_turn(_user_key(), ctx.room.name, role, text))
 
+    ending = False
+
+    async def _end_session(reason: str, farewell: str) -> None:
+        """Say a short goodbye, then close the room (disconnects the student too)."""
+        nonlocal ending
+        if ending:
+            return
+        ending = True
+        logger.info("Ending session in %s: %s", ctx.room.name, reason)
+        try:
+            await session.say(farewell, allow_interruptions=False)
+        except Exception as exc:
+            logger.warning("Farewell failed: %s", exc)
+        await ctx.delete_room()
+
+    @session.on("user_state_changed")
+    def on_user_state(ev) -> None:
+        """End idle sessions so an open tab doesn't keep a paid pipeline running."""
+        if ev.new_state == "away":
+            asyncio.create_task(
+                _end_session(
+                    "user away",
+                    "It's gone quiet, so I'll end our session here. Come back anytime!",
+                )
+            )
+
+    async def _session_time_limit() -> None:
+        await asyncio.sleep(settings.MAX_SESSION_SECONDS)
+        await _end_session(
+            "max duration",
+            "We've reached the session time limit. Great work today, start a new session anytime!",
+        )
+
+    limit_task = asyncio.create_task(_session_time_limit())
+    ctx.add_shutdown_callback(lambda: _cancel(limit_task))
+
     await session.start(
         room=ctx.room,
         agent=PhysicsTutorAgent(
@@ -88,6 +126,11 @@ async def entrypoint(ctx: JobContext) -> None:
             prior_turns=prior_turns,
         ),
     )
+
+
+async def _cancel(task: asyncio.Task) -> None:
+    """Shutdown callback: stop the session time-limit timer."""
+    task.cancel()
 
 
 if __name__ == "__main__":

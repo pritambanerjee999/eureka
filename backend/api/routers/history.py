@@ -5,12 +5,16 @@ Author: Pritam
 Date: 2026-10-12
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Path
 
 from dependencies import get_current_user, require_identity
+from models.schemas import NotesRequest
 from services.db import get_pool
 
 router = APIRouter()
+
+# Server-generated room names only (8-hex legacy or 32-hex current).
+_ROOM_NAME_PATTERN = r"^room-[0-9a-f]{8,32}$"
 
 
 @router.get("/history/{identity}")
@@ -91,8 +95,8 @@ async def get_all_notes(identity: str, current_user: str = Depends(get_current_u
 @router.put("/notes/{identity}/{room_name}")
 async def save_notes(
     identity: str,
-    room_name: str,
-    body: dict,
+    body: NotesRequest,
+    room_name: str = Path(pattern=_ROOM_NAME_PATTERN),
     current_user: str = Depends(get_current_user),
 ) -> dict:
     """Upsert notes for a specific session.
@@ -101,12 +105,12 @@ async def save_notes(
         identity: The participant identity path parameter.
         current_user: Authenticated username; must match ``identity``.
         room_name: The LiveKit room identifier.
-        body: JSON body with a ``content`` key.
+        body: Validated notes body (string ``content``, size-capped).
 
     Returns:
         A dict confirming the save operation.
     """
-    content = body.get("content", "")
+    content = body.content
     require_identity(identity, current_user)
     pool = await get_pool()
     async with pool.acquire() as conn:

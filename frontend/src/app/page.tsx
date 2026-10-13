@@ -176,6 +176,9 @@ export default function Home() {
         handleLogout();
         return;
       }
+      if (tokenRes.status === 429) {
+        throw new Error("You're starting sessions too quickly. Please wait a minute and try again.");
+      }
       if (!tokenRes.ok) throw new Error(`API error: ${tokenRes.status}`);
       const data = await tokenRes.json();
       setSession({
