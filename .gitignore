@@ -1,0 +1,14 @@
+# Secrets — never commit; .env.example is the template
+.env
+
+# Dependencies / build output
+node_modules/
+frontend/.next/
+__pycache__/
+*.pyc
+.pytest_cache/
+coverage/
+
+# Editor
+.idea/
+.DS_Store
