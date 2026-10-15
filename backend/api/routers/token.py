@@ -47,7 +47,7 @@ async def get_token(
             session store is unavailable.
     """
     identity = current_user
-    room_name = f"room-{uuid.uuid4().hex}"  # 128-bit, unguessable
+    room_name = f"room-{uuid.uuid4().hex}"  # UUID4: 122 random bits, unguessable
 
     try:
         if await hit_rate_limit(identity, settings.TOKEN_RATE_LIMIT_PER_MINUTE):
