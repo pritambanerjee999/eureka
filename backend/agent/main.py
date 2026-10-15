@@ -21,7 +21,8 @@ from services.redis_service import get_session_identity, get_session_topic
 
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO)
+# No basicConfig: the LiveKit CLI configures logging; a second root handler
+# printed every line twice.
 logger = logging.getLogger(__name__)
 
 

@@ -24,12 +24,12 @@ Everything runs in Docker. You don't need Python or Node installed.
 ### 1. Get the code
 
 ```bash
-git clone https://github.com/pritambanerjee999/eureka.git
+git clone -b feat/voice-tutor https://github.com/pritambanerjee999/eureka.git
 cd eureka
 ```
 
-> While the review PR is still open, the code is on the `feat/voice-tutor` branch. Clone it with
-> `git clone -b feat/voice-tutor https://github.com/pritambanerjee999/eureka.git` instead.
+> The code is on the `feat/voice-tutor` branch while the review PR is open. Once it's merged into `main`,
+> a plain `git clone https://github.com/pritambanerjee999/eureka.git` works too.
 > If you received the project as a zip, unzip it and `cd` into the folder; the rest is identical.
 
 ### 2. Collect your credentials
@@ -57,7 +57,7 @@ All secrets and configuration are read from a single `.env` file in the project 
 cp .env.example .env          # Windows (cmd): copy .env.example .env
 ```
 
-Open `.env` in any editor and fill in these five lines. Leave everything else as it is.
+Open `.env` in any editor and replace the placeholder values on these five lines (their order in the file doesn't matter). Leave everything else as it is. The API refuses to start while `JWT_SECRET` is still the placeholder.
 
 ```dotenv
 LIVEKIT_URL=wss://your-project.livekit.cloud
@@ -75,7 +75,7 @@ JWT_SECRET=<the 64-character hex string from step 2>
 | `LIVEKIT_URL` | yes | — | LiveKit Cloud WebSocket URL |
 | `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | yes | — | Signs room tokens and dispatches the agent |
 | `OPENAI_API_KEY` | yes | — | Speech-to-text, the tutor model and the voice |
-| `JWT_SECRET` | yes | — | Signs login tokens. The API won't start if it's under 32 characters. |
+| `JWT_SECRET` | yes | — | Signs login tokens. The API won't start if it's under 32 characters or still the placeholder. |
 | `REDIS_URL` | yes | `redis://redis:6379` | Compose service address. Leave as is. |
 | `DATABASE_URL` | yes | `postgresql://eureka:eureka@postgres:5432/eureka` | Compose service address. Leave as is. If you change `POSTGRES_PASSWORD`, change the password here too. |
 | `POSTGRES_PASSWORD` | yes | `eureka` | Password for the internal database (not exposed outside Docker). |
@@ -94,7 +94,7 @@ JWT_SECRET=<the 64-character hex string from step 2>
 docker compose up --build -d
 ```
 
-The first build takes about 3–5 minutes. Five services start: `redis`, `postgres`, `api`, `agent` and `frontend`.
+The first build takes about 3–5 minutes on a cold Docker cache (it downloads the Python and Node dependencies); rebuilds are much faster. Five services start: `redis`, `postgres`, `api`, `agent` and `frontend`.
 
 Check that everything is up:
 
@@ -102,7 +102,7 @@ Check that everything is up:
 docker compose ps
 ```
 
-All five should show `running` (Redis and Postgres also show `healthy`). Then confirm the voice agent has connected to LiveKit:
+All five should be running (shown as `running` or `Up`, depending on your Docker version). Redis and Postgres also show `healthy`. Then confirm the voice agent has connected to LiveKit:
 
 ```bash
 docker compose logs agent | grep "registered worker"
@@ -144,7 +144,7 @@ docker compose exec agent python -m pytest -q    # Agent: tutor behaviour, guard
 docker compose --profile test run --rm frontend-test   # Frontend: Jest + React Testing Library
 ```
 
-Expected results: **131 passed**, **94 passed** and **72 passed** (8 suites).
+Expected results: **132 passed**, **94 passed** and **72 passed** (8 suites).
 
 ### Manual test script (about 5 minutes)
 
@@ -170,12 +170,13 @@ Expected results: **131 passed**, **94 passed** and **72 passed** (8 suites).
 |---|---|
 | `docker compose` not found, or a `depends_on` error | You have Compose v1 (`docker-compose`). Install Docker Desktop or the Compose v2 plugin. |
 | `port is already allocated` | Something else uses port 3000 or 8000. Stop it, or change the left side of the port mapping in `docker-compose.yml`. If you move the API off 8000, also update `NEXT_PUBLIC_API_URL` and `CORS_ORIGINS`, then rebuild. |
-| `api` keeps restarting; logs mention `JWT_SECRET` | `JWT_SECRET` is missing or shorter than 32 characters. Fix `.env`, then `docker compose up -d`. |
+| `api` keeps restarting; logs mention `JWT_SECRET` | `JWT_SECRET` is missing, shorter than 32 characters, or still the `.env.example` placeholder. Fix `.env`, then `docker compose up -d`. |
 | No `registered worker` line; agent logs show 401 or connection errors | Wrong `LIVEKIT_URL`, `LIVEKIT_API_KEY` or `LIVEKIT_API_SECRET`. The URL must start with `wss://`. Fix `.env`, then `docker compose up -d --force-recreate agent`. |
 | Session screen opens but Eureka never speaks | Check `docker compose logs agent`. OpenAI `401`/`429` means a bad key or no billing/quota. Also check that the browser tab isn't muted and the mic is allowed. |
 | Eureka keeps getting cut off or answers things you didn't say | The mic is picking up background audio (a TV, speakers). Use headphones. |
 | "Failed to fetch" on the sign-in page | The API isn't reachable at `NEXT_PUBLIC_API_URL`. Check `docker compose ps` and http://localhost:8000/docs. |
 | Database login errors after changing `POSTGRES_PASSWORD` | Postgres only sets the password when its volume is first created. Run `docker compose down -v` to reset, or keep the old password. |
+| Two voices, or sessions handled by an old copy of the app | Run only one copy of the stack per LiveKit project. Every running copy registers an `eureka-tutor` worker, and LiveKit can send a session to any of them. Stop old clones with `docker compose down`. |
 | See what a service is doing | `docker compose logs -f api` (or `agent`, `frontend`) |
 
 ---

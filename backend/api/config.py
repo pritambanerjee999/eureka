@@ -41,6 +41,8 @@ class Settings(BaseSettings):
         """Refuse to start with a missing or guessable signing secret."""
         if len(v) < 32:
             raise ValueError("JWT_SECRET must be at least 32 characters (try: openssl rand -hex 32)")
+        if v.startswith("change-me"):
+            raise ValueError("JWT_SECRET is still the .env.example placeholder (try: openssl rand -hex 32)")
         return v
 
     @property
