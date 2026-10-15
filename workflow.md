@@ -1,107 +1,48 @@
 # Workflow
 
-## AI Tools Used
+## Tools and models
 
-Claude Code (the CLI) was the only AI coding tool used. The work happened in two phases: Sonnet 4.6 for the initial build, then Opus 5.5 for accounts, bug fixing, guardrails, testing and release (the sections below).
+| Tool | Model | Used for |
+|---|---|---|
+| Claude Code (terminal CLI) | Sonnet 4.6 (`claude-sonnet-4-6`) | Planning the architecture and building the first version |
+| Claude Code (terminal CLI) | Opus 5.5 (`claude-opus-5-5`) | Accounts, history UI, bug fixes, security, tests, docs and release |
 
-### Claude Code (claude-sonnet-4-6): initial architecture and build
-Used as an interactive pair programmer running directly in the terminal, for architecture decisions and tradeoffs as well as code generation.
+Claude Code was my only AI coding tool. It runs in the terminal, so besides writing code it could run Docker, tests, git and scripts against the live app.
 
-**How I used it:**
-- Pasted the project prompt and asked it to design the full architecture before writing a single line of code. The planning agent (`subagent_type: Plan`) produced the directory tree, Redis key schema, LiveKit Agents 1.x API patterns (the project runs `livekit-agents` 1.8.6), and the first version of the scalability table in the README, in one shot.
-- Once the plan was reviewed and approved, ran a single "implement it" prompt. Claude wrote all ~36 source files in parallel (multiple `Write` tool calls at once), which meant the skeleton was complete in under 5 minutes.
-- Used it for live debugging — pasted Docker build errors back into the conversation and had it diff and fix specific files rather than regenerating everything.
+## How I worked
 
-**Specific models / harnesses:**
-- Model: `claude-sonnet-4-6` (Sonnet 4.6)
-- Harness: Claude Code CLI (`claude` command), running in the `/Users/pritam/projects` working directory
-- Used the built-in `Plan` subagent for upfront architecture design and `Write`/`Edit` tools for file creation and patching
+**1. Plan first, then build.** I gave Sonnet the assignment and asked for a full design before any code: folder layout, Redis keys, LiveKit API usage, and a scaling plan. I reviewed it, then asked it to implement. It wrote about 36 files in one go, and I pasted Docker errors back to it until everything ran.
 
-### Why this workflow is fast
-The key leverage is *planning before coding*. By spending 2 minutes getting a complete architecture spec out of the planning agent first, every subsequent code-generation call had enough context to produce something that actually fits together. No back-and-forth on "wait, where does this import from?" because the file tree and separation of concerns were locked before any file was created.
+**2. Build features in small steps.** With Opus I added accounts, a chat-style history sidebar, mute and pause, and a how-to guide. I often sent the next request, or a screenshot of a bug, while it was still working, and it folded that in. Every change came with tests and a Docker rebuild before it called the change done.
 
-The parallel `Write` tool calls matter too — when Claude can write 10 files simultaneously rather than sequentially, the wall-clock time for a full project scaffold drops from minutes to seconds.
+**3. Debug from evidence.** I reported bugs as I saw them, and it checked logs and stored data before changing code:
+- *Two voices talking at once.* The logs showed two agents per room. LiveKit was auto-sending an unnamed worker on top of ours. Fix: name the worker.
+- *Conversations never saved.* The code listened for event names that don't exist in this SDK version.
+- *Tutor never started teaching.* My mic was picking up a TV, which kept cutting off the intro. Fix: the intro can't be interrupted.
+- *Tutor refused everything.* My "physics only" rule was too strict and it refused questions like "what are you?". It replayed my exact conversation against GPT-4o until the rule worked.
 
-### Claude Code (claude-opus-5-5) — accounts, history UI, and bug hunting
-A later session in the same Claude Code CLI harness, on Opus 5.5 (`claude-opus-5-5`), handled user management, the history sidebar, and several bugs found along the way.
+**4. Review for security.** I asked for a code review focused on misuse and chose to fix security and guardrails first. It then tested the running app like an attacker: another user's data, forged logins, joining someone else's room. That found the worst bug: the database and Redis were open to my local network. Fixed and re-tested.
 
-**How I used it:**
-- **Persistent memory for continuity.** Claude Code's file-based memory (`~/.claude/projects/.../memory/`) held a project summary (stack, LiveKit gotchas, test commands) and my standing feedback ("always rebuild + restart Docker after a change", "mock every external service in tests"). Each new session started with the right context and conventions instead of rediscovering them.
-- **Steering mid-task.** I sent new requirements while it was still working ("put history in a sidebar like a chat app"; a screenshot of overlapping voices). It folded them into the running task instead of restarting.
-- **Debugging from evidence, not guesses.** For the "multiple voices" bug it read the agent and API logs, saw two dispatch IDs per room against a single `/token` call, and traced it to LiveKit auto-dispatching unnamed workers. The fix was naming the worker and dispatching explicitly, plus a regression test.
-- **Auditing against the brief.** When I asked it to update the docs against `PROMPT.md`, it first checked the code against each requirement. It found that conversations weren't actually going to Redis, queried Postgres, and saw that zero spoken turns had ever been saved. Introspecting the installed `livekit-agents` SDK showed the event names in `main.py` didn't exist in v1.8.6. It flagged the gap and asked before changing scope, then fixed both issues together.
-- **Verifying for real.** Beyond unit tests, it registered a user against the live API, joined the room with a headless LiveKit client, and confirmed the agent's greeting landed in both Redis (`conversation:{room}`, 24 h TTL) and Postgres.
-- **Tests as part of every change.** Auth service, auth router, ownership checks, conversation routing, agent resume path, and the new React components each got tests with mocked dependencies. It also found a Jest config typo (`setupFilesAfterFramework`) that had kept the frontend suite from ever running.
+**5. Test like a stranger.** To check the README really works, it started a second, separate agent that knew only the README and the GitHub link. That agent cloned the repo, ran everything in Docker, ran the tests, and used Chrome to sign up, talk to the tutor, and confirm users can't see each other's data. It reported a few unclear README steps and one config issue, which we fixed.
 
-**Specific models / harnesses:**
-- Model: `claude-opus-5-5` (Opus 5.5)
-- Harness: Claude Code CLI with persistent memory, Bash/Read/Edit/Write tools, and `AskUserQuestion` for scope decisions
-- Docker Compose for every build, test run and restart; `curl` and a headless `livekit.rtc` client for end-to-end checks
+**6. Check the docs against the code.** Before submitting, it checked every line of the README and `.env.example` against the code and this assignment, and fixed what was wrong. That included a missing variable, a wrong topic count, and a cleanup claim that wasn't true.
 
-### Claude Code (claude-opus-5-5): review, guardrails, polish and release
-The same Opus 5.5 session then took the project from "works on my machine" to something a reviewer can clone and run.
+**7. Think through scaling.** I asked about caching FAQs, semantic caching and RAG. It checked facts first (for example, that our prompt is long enough for OpenAI's automatic caching) and suggested only what fits a voice tutor. The plan, now in the README, is:
+- start with exact, safe caches;
+- add a guarded semantic cache later;
+- use RAG only at session start or when the model asks for a fact, not on every turn.
 
-**How I used it:**
-- **Code review, then a scoped fix.** I asked for a thorough review focused on guardrails and misuse. It returned findings ranked by severity, and I chose the scope ("security + guardrails only"). Fixes:
-  - server-generated room names (the client could previously join any room);
-  - topic validation against prompt injection;
-  - per-user rate limits and one live session per user;
-  - idle and maximum session timeouts;
-  - size-capped inputs;
-  - a required strong `JWT_SECRET` and locked-down CORS.
+## What helped most
+- **Memory between sessions.** Claude Code kept a project summary and my rules ("always rebuild Docker after a change", "mock external services in tests"), so each session started with the right context.
+- **Testing the real app, not just unit tests.** The biggest bugs (open database ports, the TV interruption, over-refusal) only showed up on the running system.
+- **A fresh agent as a tester.** It had no knowledge of the code, so it caught gaps I'd have missed.
 
-  The remaining findings went into the README as known limitations.
-- **Live attack checks, not just unit tests.** After each security change it attacked the running stack:
-  - a second account tried to read or write the first one's history and notes, including uppercase and URL-encoded usernames;
-  - it sent tokens with a forged `sub` and `alg=none`;
-  - it tried to hijack a room through the `/token` body;
-  - it called `/token` repeatedly until the rate limit kicked in.
+## What I did myself
+- Approved the design and made the product decisions: accounts, history sidebar, mute and pause, physics-only scope.
+- Tested the voice tutor by hand and reported bugs with screenshots.
+- Chose what to fix first and approved pushes and merges.
+- Set up the GitHub repo and SSH key, and merged the PR.
+- Copied `PROMPT.md` from the assignment and recorded the video walkthrough.
 
-  That's how it caught the worst bug of the project: Postgres and Redis were published on all interfaces, so anyone on the network could read every user's data without going through the API. It confirmed the exposure from the LAN IP, removed the host port mappings, and deleted the throwaway accounts afterwards.
-- **Diagnosing bugs from logs and stored data.** When I reported "I clicked a topic and it never started teaching", it read the agent logs and the Redis transcript for that room. My microphone had picked up a TV, and voice-activity detection kept interrupting the intro. The fix was to make the opening non-interruptible (verified against the installed SDK's `generate_reply` signature first).
-- **Testing prompts against the real model.** Prompt changes were checked by sending scripted conversations to GPT-4o with the production system prompt, not just by asserting on prompt text. That loop caught an over-correction. My "physics only" request first produced a rule so strict that it refused questions about the tutor itself and replies like "yeah". I sent screenshots, and it rewrote the rule to list what *is* in scope, replayed my exact failing conversation to confirm the fix, and saved the lesson to memory ("guardrails must not over-refuse").
-- **Mid-task feature requests.** While it was working I sent mute/pause, a collapsible sidebar, a footer-style how-to guide, and "does it use a semantic cache?". Each was built, tested, deployed and committed as its own change. Pause is a participant attribute that the agent watches; that logic lives in a small, unit-tested `PauseController`. The cache question got a reasoned "no" that is now in the README.
-- **Git and GitHub.**
-  - Branch-per-feature, with a commit per change and attribution in each message.
-  - When the push failed it diagnosed the missing SSH key and walked me through adding one.
-  - It wrote the PR description, and after the merge it noticed the PR had closed before the last two commits and merged those into `main` too.
-- **A second agent as an independent tester.** Its own testing was biased by knowing the code. So it spawned a separate general-purpose subagent with only the README and the repo URL. The subagent cloned from GitHub into a scratch folder, built the stack under its own compose project name (to protect my data), and ran all three test suites. It then drove my installed Chrome through Playwright with a fake microphone: sign up, start a topic, hear the intro, pause and resume, end the session, and check that a second user gets 403. It came back with screenshots and six README gaps, plus a real config issue: the `.env.example` placeholder JWT secret passed validation. All of these were fixed.
-
-- **Auditing the docs against the code and the brief.** As a final pass it went through `PROMPT.md` requirement by requirement and checked each factual claim in the markdown against the source. That meant diffing every setting the code reads against `.env.example`, and checking TTLs, limits, pool sizes and topic counts. It caught and fixed four things:
-  - two variables missing from `.env.example`;
-  - "five" physics branches where there are six;
-  - room-name entropy overstated: a UUID4 has 122 random bits, not 128;
-  - a Redis set the docs said was cleaned up when nothing ever removes from it, now listed as a known limitation instead.
-
-  It also confirmed that `PROMPT.md` is byte-identical to the original commit.
-- **Thinking through scaling with it.** I asked how we'd cache FAQs, whether semantic caching makes sense, whether RAG on the topic would help, and what else matters at 10k sessions. It reasoned from this specific product, not a generic checklist:
-  - **Measured before claiming.** It counted the system prompt (~1,150 tokens, over OpenAI's 1,024-token threshold) before saying prompt caching already applies. It also checked that the per-turn reminder is appended at the end, so it doesn't break the cached prefix.
-  - **Ordered caching by safety.** In tutoring a wrong cached answer is worse than a miss, so the plan runs from exact and safe to fuzzy and guarded:
-    1. provider prompt caching;
-    2. intro text and audio keyed by topic and level;
-    3. pre-rendered fixed phrases;
-    4. reviewed FAQ answers;
-    5. a semantic cache, namespaced by topic, level and prompt version, used only for standalone questions, and calibrated on wrong-hit rate before launch.
-  - **RAG: not per turn.** It argued against per-turn RAG for general physics (the model already knows it, and retrieval adds latency to every voice reply). It named where RAG does pay off: curriculum alignment, a misconception and analogy bank, grounded facts and citations, and the student's own history. Its design retrieves once at session start, otherwise only through a tool call, and shares one vector index with the semantic cache.
-  - **Added the rest.** Observability, model routing, admission control, async persistence, graceful drain, multi-region, lifecycle webhooks and data retention.
-
-  It wrote all of this into the README's design decisions and scaling sections, kept consistent with the existing "no semantic cache in this version" decision.
-
-**Specific models / harnesses:**
-- Model: `claude-opus-5-5` (Opus 5.5) for the main session and the tester subagent
-- Harness: Claude Code CLI, the `Agent` tool (general-purpose subagent), persistent memory
-- Tools driven through Claude Code: Docker Compose, `git` over SSH, the GitHub REST API (PR status), the OpenAI API (prompt evaluation), Playwright with headless Chrome (browser end-to-end test)
-
-## Manual Work
-- Reviewed the architecture plan and approved the tech stack choices before implementation started
-- Verified the LiveKit Agents 1.x API patterns matched what the `livekit-agents` package actually exports
-- Wrote the `PROMPT.md` content (copied verbatim from the assignment)
-- Made the product decisions: accounts, chat-style history sidebar, mute/pause, footer guide, physics-only scope, and the change to route conversations through Redis
-- Chose the review scope (security and guardrails first) and approved each risky step: pushing, merging
-- Tested the voice experience by hand in the browser and reported bugs with screenshots: overlapping voices, a dead "New session" button, an intro cut off by TV audio, and over-refusal
-- Created the GitHub repo, added the SSH key, and merged the PR
-- Will record the video walkthrough manually
-
-## Not Used
-- Cursor / GitHub Copilot: Claude Code in the terminal already covers editing, and it can also run Docker, tests and git, which an IDE plugin can't
-- ChatGPT: same reason; OpenAI models are used only inside the product (STT, tutor LLM, TTS) and for evaluating prompts
+## Not used
+Cursor, GitHub Copilot and ChatGPT. Claude Code covered everything, including running the app. OpenAI models are used only inside the product (speech-to-text, the tutor, the voice) and to test prompts.
