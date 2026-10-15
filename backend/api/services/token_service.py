@@ -39,6 +39,8 @@ def generate_token(room_name: str, identity: str) -> str:
                 room=room_name,
                 can_publish=True,
                 can_subscribe=True,
+                # Lets the browser set its own "paused" attribute (pause/resume).
+                can_update_own_metadata=True,
             )
         )
     )

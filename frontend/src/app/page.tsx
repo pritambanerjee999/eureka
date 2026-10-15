@@ -39,7 +39,7 @@ const HOW_TO_STEPS = [
   },
   {
     title: "Just talk",
-    body: "Eureka speaks first. Answer out loud and interrupt whenever you like. Use headphones or a quiet room so background voices don't cut in.",
+    body: "Eureka speaks first. Answer out loud and interrupt whenever you like. Use headphones or a quiet room so background voices don't cut in. Mute or pause anytime from the top bar.",
   },
   {
     title: "Explain it back",

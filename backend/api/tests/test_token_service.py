@@ -81,3 +81,5 @@ class TestGenerateToken:
         # VideoGrants(room_join=True, room=room_name, ...)
         assert call_kwargs.kwargs.get("room") == "target-room"
         assert call_kwargs.kwargs.get("room_join") is True
+        # Needed so the browser can set its "paused" attribute.
+        assert call_kwargs.kwargs.get("can_update_own_metadata") is True

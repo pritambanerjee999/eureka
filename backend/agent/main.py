@@ -16,6 +16,7 @@ from livekit.plugins import openai, silero
 from agent import PhysicsTutorAgent, safe_topic
 from config import settings
 from services.conversation_service import load_room_turns, record_turn, turn_from_item
+from services.pause_service import PauseController
 from services.redis_service import get_session_identity, get_session_topic
 
 load_dotenv()
@@ -96,10 +97,25 @@ async def entrypoint(ctx: JobContext) -> None:
             logger.warning("Farewell failed: %s", exc)
         await ctx.delete_room()
 
+    pauser = PauseController(
+        session,
+        _end_session,
+        max_pause_seconds=settings.MAX_PAUSE_SECONDS,
+        idle_seconds=settings.USER_AWAY_SECONDS,
+    )
+
+    @ctx.room.on("participant_attributes_changed")
+    def on_attributes(changed: dict, participant) -> None:
+        """The student's browser sets ``paused`` to pause/resume the session."""
+        if identity is None or participant.identity == identity:
+            pauser.handle_attributes(changed)
+
     @session.on("user_state_changed")
     def on_user_state(ev) -> None:
         """End idle sessions so an open tab doesn't keep a paid pipeline running."""
-        if ev.new_state == "away":
+        if ev.new_state == "speaking":
+            pauser.user_spoke()
+        if ev.new_state == "away" and pauser.should_end_on_away():
             asyncio.create_task(
                 _end_session(
                     "user away",
@@ -116,6 +132,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     limit_task = asyncio.create_task(_session_time_limit())
     ctx.add_shutdown_callback(lambda: _cancel(limit_task))
+    ctx.add_shutdown_callback(_close_pauser(pauser))
 
     await session.start(
         room=ctx.room,
@@ -126,6 +143,15 @@ async def entrypoint(ctx: JobContext) -> None:
             prior_turns=prior_turns,
         ),
     )
+
+
+def _close_pauser(pauser: PauseController):
+    """Build a shutdown callback that cancels the pause timers."""
+
+    async def _close() -> None:
+        pauser.close()
+
+    return _close
 
 
 async def _cancel(task: asyncio.Task) -> None:

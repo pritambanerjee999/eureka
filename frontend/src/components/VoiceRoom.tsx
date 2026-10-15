@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
 import AgentVisualizer from "./AgentVisualizer";
 import TranscriptPanel from "./TranscriptPanel";
+import SessionControls from "./SessionControls";
 import { authFetch } from "@/lib/auth";
 
 /** A single message record from the persistent conversation history. */
@@ -113,15 +114,17 @@ function SessionLayout({
 }: Omit<Props, "token" | "serverUrl">) {
   const title = topicTitle(topic);
   const [elapsed, setElapsed] = useState(0);
+  const [paused, setPaused] = useState(false);
   const [notes, setNotes] = useState<string>("");
   const [notesSaved, setNotesSaved] = useState(true);
   const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Session timer
+  // Session timer (stops while paused)
   useEffect(() => {
+    if (paused) return;
     const id = setInterval(() => setElapsed((s) => s + 1), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [paused]);
 
   // Load notes for this session from the API on mount
   useEffect(() => {
@@ -169,10 +172,21 @@ function SessionLayout({
         </div>
 
         <div className="flex items-center gap-4">
+          <SessionControls paused={paused} onPausedChange={setPaused} />
+
           {/* Live session timer */}
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-xs font-mono text-green-400">{formatDuration(elapsed)}</span>
+          <div
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full border ${
+              paused ? "bg-white/5 border-white/10" : "bg-green-500/10 border-green-500/20"
+            }`}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${paused ? "bg-white/40" : "bg-green-400 animate-pulse"}`}
+            />
+            <span className={`text-xs font-mono ${paused ? "text-white/50" : "text-green-400"}`}>
+              {paused ? "Paused " : ""}
+              {formatDuration(elapsed)}
+            </span>
           </div>
 
           <button
@@ -196,7 +210,9 @@ function SessionLayout({
           <div className="flex flex-col items-center justify-center py-10 px-6 shrink-0 border-b border-white/5">
             <AgentVisualizer />
             <p className="mt-6 text-white/25 text-xs text-center">
-              Just speak — Eureka is listening
+              {paused
+                ? "Paused: Eureka is waiting. Press Resume when you're ready."
+                : "Just speak — Eureka is listening"}
             </p>
           </div>
 

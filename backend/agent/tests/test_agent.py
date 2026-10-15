@@ -427,6 +427,27 @@ class TestSystemPromptGuardrails:
 
         assert phrase in PHYSICS_TUTOR_SYSTEM_PROMPT
 
+    def test_scope_is_physics_only(self):
+        from prompts import PHYSICS_TUTOR_SYSTEM_PROMPT
+
+        assert "ONLY teach physics" in PHYSICS_TUTOR_SYSTEM_PROMPT
+        assert "Background audio" in PHYSICS_TUTOR_SYSTEM_PROMPT
+
+
+class TestScopeReminder:
+    @pytest.mark.asyncio
+    async def test_every_turn_restates_physics_only_scope(self):
+        """A system reminder is added to the per-turn context before each reply."""
+        from agent import SCOPE_REMINDER, PhysicsTutorAgent
+
+        agent = PhysicsTutorAgent(topic="Light", room_name="room-1")
+        turn_ctx = MagicMock()
+
+        await agent.on_user_turn_completed(turn_ctx, new_message=MagicMock())
+
+        turn_ctx.add_message.assert_called_once_with(role="system", content=SCOPE_REMINDER)
+        assert "only teach physics" in SCOPE_REMINDER
+
 
 class TestSaveProgressLimits:
     @pytest.mark.asyncio

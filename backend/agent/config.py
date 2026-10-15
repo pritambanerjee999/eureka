@@ -22,6 +22,7 @@ class Settings(BaseSettings):
             LiveKit automatic dispatch, so only the API's explicit dispatch joins a room.
         MAX_SESSION_SECONDS: Hard cap on a session's length (cost guardrail).
         USER_AWAY_SECONDS: End the session after this long without the student speaking.
+        MAX_PAUSE_SECONDS: End the session if it stays paused this long.
     """
 
     LIVEKIT_API_KEY: str
@@ -33,6 +34,7 @@ class Settings(BaseSettings):
     AGENT_NAME: str = "eureka-tutor"
     MAX_SESSION_SECONDS: int = 30 * 60
     USER_AWAY_SECONDS: float = 3 * 60
+    MAX_PAUSE_SECONDS: float = 10 * 60
 
     class Config:
         """Pydantic inner config for .env file loading."""
