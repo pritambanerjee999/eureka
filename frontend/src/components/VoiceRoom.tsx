@@ -14,6 +14,7 @@ import AgentVisualizer from "./AgentVisualizer";
 import TranscriptPanel from "./TranscriptPanel";
 import SessionControls from "./SessionControls";
 import { authFetch } from "@/lib/auth";
+import { REFERENCES } from "@/data/references";
 
 /** A single message record from the persistent conversation history. */
 interface HistoryMessage {
@@ -39,40 +40,6 @@ interface Props {
   /** Callback invoked when the user ends the session or is disconnected. */
   onDisconnect: () => void;
 }
-
-/** Quick-link reference resources shown in the right panel. */
-const REFERENCES = [
-  {
-    label: "The Feynman Lectures",
-    subtitle: "Full text, free online",
-    url: "https://www.feynmanlectures.caltech.edu",
-    icon: "📖",
-  },
-  {
-    label: "HyperPhysics",
-    subtitle: "Concept maps + formulas",
-    url: "http://hyperphysics.phy-astr.gsu.edu",
-    icon: "🔗",
-  },
-  {
-    label: "PhET Simulations",
-    subtitle: "Interactive physics sims",
-    url: "https://phet.colorado.edu",
-    icon: "⚗️",
-  },
-  {
-    label: "Khan Academy Physics",
-    subtitle: "Video walkthroughs",
-    url: "https://www.khanacademy.org/science/physics",
-    icon: "🎥",
-  },
-  {
-    label: "MIT OpenCourseWare",
-    subtitle: "Full lecture notes + exams",
-    url: "https://ocw.mit.edu/courses/physics/",
-    icon: "🎓",
-  },
-];
 
 /**
  * Format elapsed seconds as M:SS.

@@ -245,10 +245,11 @@ describe("Home page — history sidebar", () => {
     expect(localStorageMock.getItem("eureka_sidebar_collapsed")).toBe("0");
   });
 
-  it("shows the how-to-use guide on the landing page", async () => {
+  it("shows the how-to-use guide in the site footer", async () => {
     await renderHome();
-    expect(screen.getByRole("heading", { name: /how to use eureka/i })).toBeInTheDocument();
-    expect(screen.getByText("Just talk")).toBeInTheDocument();
+    const footer = screen.getByLabelText(/how to use eureka/i);
+    expect(footer).toHaveTextContent("During a session");
+    expect(footer).toHaveTextContent("Mute or pause from the top bar");
   });
 
   it("starts an open voice session on New session", async () => {
