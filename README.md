@@ -24,12 +24,10 @@ Everything runs in Docker. You don't need Python or Node installed.
 ### 1. Get the code
 
 ```bash
-git clone -b feat/voice-tutor https://github.com/pritambanerjee999/eureka.git
+git clone https://github.com/pritambanerjee999/eureka.git
 cd eureka
 ```
 
-> The code is on the `feat/voice-tutor` branch while the review PR is open. Once it's merged into `main`,
-> a plain `git clone https://github.com/pritambanerjee999/eureka.git` works too.
 > If you received the project as a zip, unzip it and `cd` into the folder; the rest is identical.
 
 ### 2. Collect your credentials
