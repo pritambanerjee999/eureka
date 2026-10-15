@@ -15,8 +15,12 @@ interface Props {
   /** Key of the session currently open in the main panel, if any. */
   selectedKey: string | null;
   username: string;
-  /** Whether the drawer is open on small screens (always visible on md+). */
+  /** Whether the drawer is open on small screens. */
   open: boolean;
+  /** Whether the sidebar is hidden on md+ screens to give the main panel full width. */
+  collapsed?: boolean;
+  /** Hide the sidebar on md+ screens. */
+  onCollapse?: () => void;
   onSelect: (session: Session) => void;
   /** Start a new open-ended voice session. */
   onNewSession: () => void;
@@ -39,6 +43,8 @@ export default function HistorySidebar({
   selectedKey,
   username,
   open,
+  collapsed = false,
+  onCollapse,
   onSelect,
   onNewSession,
   onHome,
@@ -59,18 +65,34 @@ export default function HistorySidebar({
           "fixed md:static inset-y-0 left-0 z-50 w-72 shrink-0 flex flex-col",
           "bg-nebula border-r border-white/5 transition-transform duration-200",
           open ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+          collapsed ? "md:hidden" : "",
         ].join(" ")}
       >
         {/* Brand + new session */}
         <div className="p-3 border-b border-white/5">
-          <button
-            onClick={onHome}
-            aria-label="Home: pick a topic"
-            className="flex items-center gap-2 px-2 h-10 rounded-lg hover:bg-white/5 transition-colors"
-          >
-            <span className="text-xl">⚛</span>
-            <span className="font-bold text-lg tracking-tight">Eureka</span>
-          </button>
+          <div className="flex items-center justify-between">
+            <button
+              onClick={onHome}
+              aria-label="Home: pick a topic"
+              className="flex items-center gap-2 px-2 h-10 rounded-lg hover:bg-white/5 transition-colors"
+            >
+              <span className="text-xl">⚛</span>
+              <span className="font-bold text-lg tracking-tight">Eureka</span>
+            </button>
+            {onCollapse && (
+              <button
+                onClick={onCollapse}
+                aria-label="Hide history"
+                title="Hide history"
+                className="hidden md:block p-2 rounded-lg text-white/50 hover:text-white hover:bg-white/5"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="2.5" width="12" height="11" rx="2" />
+                  <path d="M6 2.5v11M11 6.5 9.5 8l1.5 1.5" />
+                </svg>
+              </button>
+            )}
+          </div>
           <button
             onClick={onNewSession}
             disabled={loading}

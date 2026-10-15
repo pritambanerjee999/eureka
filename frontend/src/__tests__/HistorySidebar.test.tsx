@@ -71,6 +71,14 @@ describe("HistorySidebar", () => {
     expect(props.onHome).toHaveBeenCalled();
   });
 
+  it("hides on desktop when collapsed and wires the hide button", () => {
+    const onCollapse = jest.fn();
+    renderSidebar({ collapsed: true, onCollapse });
+    expect(screen.getByLabelText("Session history").className).toContain("md:hidden");
+    fireEvent.click(screen.getByLabelText("Hide history"));
+    expect(onCollapse).toHaveBeenCalled();
+  });
+
   it("disables New session while connecting", () => {
     renderSidebar({ loading: true });
     expect(screen.getByText("Connecting…").closest("button")).toBeDisabled();

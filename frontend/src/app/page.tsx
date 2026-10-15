@@ -24,6 +24,37 @@ import {
   type Session,
 } from "@/lib/sessions";
 
+/** localStorage key for the desktop sidebar collapsed preference. */
+const SIDEBAR_KEY = "eureka_sidebar_collapsed";
+
+/** Steps shown in the "How to use Eureka" guide on the landing page. */
+const HOW_TO_STEPS = [
+  {
+    title: "Pick your level",
+    body: "Choose a level, or use the level check at the top: answer three spoken questions and Eureka sets it for you.",
+  },
+  {
+    title: "Choose a topic",
+    body: "Tap any topic card, or New session in the sidebar to ask about anything. Allow microphone access when asked.",
+  },
+  {
+    title: "Just talk",
+    body: "Eureka speaks first. Answer out loud and interrupt whenever you like. Use headphones or a quiet room so background voices don't cut in.",
+  },
+  {
+    title: "Explain it back",
+    body: "Put ideas in your own words. When you've understood something, Eureka saves a checkpoint to your history.",
+  },
+  {
+    title: "Take notes",
+    body: "Jot notes during a session; they save automatically and stay with that session.",
+  },
+  {
+    title: "Pick up later",
+    body: "Past sessions live in the sidebar. Open one to reread it, then Continue this topic. Hide the sidebar for more room.",
+  },
+];
+
 /** Shape of the LiveKit session credentials returned by the token endpoint. */
 interface SessionInfo {
   token: string;
@@ -85,8 +116,32 @@ export default function Home() {
   const [notes, setNotes] = useState<NotesEntry[]>([]);
   const [selected, setSelected] = useState<Session | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /** Restore the remembered desktop sidebar preference. */
+  useEffect(() => {
+    try {
+      setSidebarCollapsed(localStorage.getItem(SIDEBAR_KEY) === "1");
+    } catch {
+      /* storage unavailable: keep default */
+    }
+  }, []);
+
+  /**
+   * Show or hide the history sidebar on desktop and remember the choice.
+   *
+   * @param collapsed - True to hide the sidebar.
+   */
+  const setCollapsed = (collapsed: boolean) => {
+    setSidebarCollapsed(collapsed);
+    try {
+      localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0");
+    } catch {
+      /* storage unavailable: preference lasts for this page only */
+    }
+  };
 
   /** Drop credentials and all per-user state. */
   const handleLogout = useCallback(() => {
@@ -243,6 +298,8 @@ export default function Home() {
         selectedKey={selected?.key ?? null}
         username={user}
         open={sidebarOpen}
+        collapsed={sidebarCollapsed}
+        onCollapse={() => setCollapsed(true)}
         onSelect={(s) => {
           setSelected(s);
           setSidebarOpen(false);
@@ -273,6 +330,20 @@ export default function Home() {
                 <path d="M3 5h14M3 10h14M3 15h14" />
               </svg>
             </button>
+            {sidebarCollapsed && (
+              <button
+                onClick={() => setCollapsed(false)}
+                className="hidden md:flex items-center gap-2 px-3 py-1.5 -ml-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/5"
+                aria-label="Show history"
+                title="Show history"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="2.5" width="12" height="11" rx="2" />
+                  <path d="M6 2.5v11M9.5 6.5 11 8l-1.5 1.5" />
+                </svg>
+                History
+              </button>
+            )}
             <div className="flex-1" />
             <button
               onClick={handleAssess}
@@ -355,6 +426,30 @@ export default function Home() {
                 loading={loading}
                 onTopicClick={(topic) => handleConnect(topic)}
               />
+            </section>
+
+            {/* ── How to use ── */}
+            <section aria-labelledby="how-to-use" className="max-w-5xl mx-auto px-6 pb-16">
+              <h2
+                id="how-to-use"
+                className="text-xs uppercase tracking-widest text-white/30 font-semibold mb-3 pl-1"
+              >
+                How to use Eureka
+              </h2>
+              <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {HOW_TO_STEPS.map((step, i) => (
+                  <li
+                    key={step.title}
+                    className="rounded-2xl border border-white/5 bg-nebula/60 p-4"
+                  >
+                    <p className="text-sm font-semibold text-white/90 mb-1">
+                      <span className="text-aurora mr-2">{i + 1}</span>
+                      {step.title}
+                    </p>
+                    <p className="text-sm text-white/50 leading-relaxed">{step.body}</p>
+                  </li>
+                ))}
+              </ol>
             </section>
           </>
         )}

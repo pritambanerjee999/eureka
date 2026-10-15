@@ -231,6 +231,26 @@ describe("Home page — history sidebar", () => {
     expect(screen.getByText("Classical Mechanics")).toBeInTheDocument();
   });
 
+  it("hides and shows the history sidebar, remembering the choice", async () => {
+    await renderHome();
+    const sidebar = screen.getByLabelText("Session history");
+    expect(sidebar.className).not.toContain("md:hidden");
+
+    fireEvent.click(screen.getByLabelText("Hide history"));
+    expect(sidebar.className).toContain("md:hidden");
+    expect(localStorageMock.getItem("eureka_sidebar_collapsed")).toBe("1");
+
+    fireEvent.click(screen.getByLabelText("Show history"));
+    expect(sidebar.className).not.toContain("md:hidden");
+    expect(localStorageMock.getItem("eureka_sidebar_collapsed")).toBe("0");
+  });
+
+  it("shows the how-to-use guide on the landing page", async () => {
+    await renderHome();
+    expect(screen.getByRole("heading", { name: /how to use eureka/i })).toBeInTheDocument();
+    expect(screen.getByText("Just talk")).toBeInTheDocument();
+  });
+
   it("starts an open voice session on New session", async () => {
     await renderHome();
     await act(async () => {
