@@ -18,6 +18,7 @@ TOPIC_MAX_LEN = 80
 _TOPIC_RE = re.compile(r"^[\w &'?=²\-]+$")
 
 NOTES_MAX_LEN = 20_000
+TITLE_MAX_LEN = 80
 
 
 class TokenRequest(BaseModel):
@@ -122,6 +123,26 @@ class UserResponse(BaseModel):
     """
 
     username: str
+
+
+class TitleRequest(BaseModel):
+    """Request body for ``PUT /sessions/{identity}/{room_name}/title``.
+
+    Attributes:
+        title: New display name for the session. Whitespace is collapsed; an
+            empty string resets the session to its original topic name.
+    """
+
+    title: str = Field(max_length=200)
+
+    @field_validator("title")
+    @classmethod
+    def _clean_title(cls, v: str) -> str:
+        """Collapse whitespace (incl. newlines/tabs) and cap the length."""
+        v = " ".join(v.split())
+        if len(v) > TITLE_MAX_LEN:
+            raise ValueError(f"title must be at most {TITLE_MAX_LEN} characters")
+        return v
 
 
 class NotesRequest(BaseModel):

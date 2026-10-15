@@ -8,6 +8,7 @@
 
 "use client";
 
+import { useState } from "react";
 import { fmtTime, groupSessionsByDate, type Session } from "@/lib/sessions";
 
 interface Props {
@@ -22,6 +23,8 @@ interface Props {
   /** Hide the sidebar on md+ screens. */
   onCollapse?: () => void;
   onSelect: (session: Session) => void;
+  /** Rename a session; an empty title resets it. Omit to hide the rename button. */
+  onRename?: (session: Session, title: string) => void;
   /** Start a new open-ended voice session. */
   onNewSession: () => void;
   /** Return to the topic picker. */
@@ -46,6 +49,7 @@ export default function HistorySidebar({
   collapsed = false,
   onCollapse,
   onSelect,
+  onRename,
   onNewSession,
   onHome,
   loading = false,
@@ -53,6 +57,15 @@ export default function HistorySidebar({
   onClose,
 }: Props) {
   const groups = groupSessionsByDate(sessions);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+
+  /** Save the draft title (unchanged titles are a no-op) and leave edit mode. */
+  const commitRename = (s: Session) => {
+    setEditingKey(null);
+    const title = draft.trim();
+    if (title !== s.topic) onRename?.(s, title);
+  };
 
   return (
     <>
@@ -124,7 +137,24 @@ export default function HistorySidebar({
                     const active = s.key === selectedKey;
                     const exchanges = s.messages.filter((m) => m.role === "user").length;
                     return (
-                      <li key={s.key}>
+                      <li key={s.key} className="relative group">
+                        {editingKey === s.key ? (
+                          <input
+                            autoFocus
+                            value={draft}
+                            maxLength={80}
+                            aria-label="Session name"
+                            onChange={(e) => setDraft(e.target.value)}
+                            onFocus={(e) => e.target.select()}
+                            onBlur={() => commitRename(s)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") commitRename(s);
+                              if (e.key === "Escape") setEditingKey(null);
+                            }}
+                            className="w-full px-3 py-2 rounded-lg bg-white/10 border border-aurora/40
+                                       text-sm text-white outline-none"
+                          />
+                        ) : (
                         <button
                           onClick={() => onSelect(s)}
                           aria-current={active ? "true" : undefined}
@@ -133,7 +163,7 @@ export default function HistorySidebar({
                             active ? "bg-aurora/15 text-white" : "text-white/70 hover:bg-white/5",
                           ].join(" ")}
                         >
-                          <p className="text-sm truncate">{s.topic}</p>
+                          <p className="text-sm truncate pr-6">{s.topic}</p>
                           <p className="text-[11px] text-white/30 mt-0.5 flex items-center gap-1.5">
                             <span>{fmtTime(s.startedAt)}</span>
                             {exchanges > 0 && <span>· {exchanges} msg{exchanges !== 1 ? "s" : ""}</span>}
@@ -142,6 +172,24 @@ export default function HistorySidebar({
                             )}
                           </p>
                         </button>
+                        )}
+                        {onRename && s.roomName && editingKey !== s.key && (
+                          <button
+                            onClick={() => {
+                              setDraft(s.topic);
+                              setEditingKey(s.key);
+                            }}
+                            aria-label={`Rename ${s.topic}`}
+                            title="Rename"
+                            className="absolute right-2 top-2 p-1.5 rounded-md text-white/40 hover:text-white
+                                       hover:bg-white/10 opacity-0 group-hover:opacity-100 focus:opacity-100
+                                       transition-opacity"
+                          >
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 2.5l2.5 2.5L6 12.5H3.5V10z" />
+                            </svg>
+                          </button>
+                        )}
                       </li>
                     );
                   })}

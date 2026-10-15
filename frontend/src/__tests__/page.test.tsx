@@ -221,6 +221,46 @@ describe("Home page — history sidebar", () => {
     expect(JSON.parse(tokenCall![1].body).topic).toBe("Light");
   });
 
+  it("shows saved titles and renames a session via the API", async () => {
+    routeFetch({
+      "/history": () => makeOkResponse({ messages: history, titles: { "room-1": "Light, take two" } }),
+      "/sessions/": () => makeOkResponse({ room_name: "room-1", title: "Waves of light" }),
+    });
+    await renderHome();
+    expect(await screen.findByText("Light, take two")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Rename Light, take two"));
+    const input = screen.getByLabelText("Session name");
+    fireEvent.change(input, { target: { value: "Waves of light" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    expect(screen.getByText("Waves of light")).toBeInTheDocument();
+    const call = mockFetch.mock.calls.find((c) => String(c[0]).includes("/sessions/"));
+    expect(String(call![0])).toContain("/sessions/alice/room-1/title");
+    expect(call![1].method).toBe("PUT");
+    expect(JSON.parse(call![1].body)).toEqual({ title: "Waves of light" });
+  });
+
+  it("rolls back a rename that fails to save", async () => {
+    routeFetch({
+      "/history": () => makeOkResponse({ messages: history }),
+      "/sessions/": () => makeErrorResponse(500),
+    });
+    await renderHome();
+    fireEvent.click(await screen.findByLabelText("Rename Light"));
+    const input = screen.getByLabelText("Session name");
+    fireEvent.change(input, { target: { value: "Nope" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    await waitFor(() => expect(screen.getByText(/couldn't rename/i)).toBeInTheDocument());
+    expect(screen.queryByText("Nope")).not.toBeInTheDocument();
+    expect(screen.getByText("Light")).toBeInTheDocument();
+  });
+
   it("returns to the topic picker when the brand is clicked", async () => {
     routeFetch({ "/history": () => makeOkResponse({ messages: history }) });
     await renderHome();

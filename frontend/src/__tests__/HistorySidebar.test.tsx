@@ -83,4 +83,31 @@ describe("HistorySidebar", () => {
     renderSidebar({ loading: true });
     expect(screen.getByText("Connecting…").closest("button")).toBeDisabled();
   });
+
+  it("renames a session inline with Enter", () => {
+    const onRename = jest.fn();
+    renderSidebar({ onRename });
+    fireEvent.click(screen.getByLabelText("Rename Light"));
+    const input = screen.getByLabelText("Session name");
+    expect(input).toHaveValue("Light");
+    fireEvent.change(input, { target: { value: "Photons and me" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onRename).toHaveBeenCalledWith(expect.objectContaining({ key: "room-1" }), "Photons and me");
+    expect(screen.queryByLabelText("Session name")).not.toBeInTheDocument();
+  });
+
+  it("cancels a rename with Escape and skips unchanged names", () => {
+    const onRename = jest.fn();
+    renderSidebar({ onRename });
+    fireEvent.click(screen.getByLabelText("Rename Light"));
+    fireEvent.keyDown(screen.getByLabelText("Session name"), { key: "Escape" });
+    fireEvent.click(screen.getByLabelText("Rename Light"));
+    fireEvent.keyDown(screen.getByLabelText("Session name"), { key: "Enter" });
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it("hides the rename button without an onRename handler", () => {
+    renderSidebar();
+    expect(screen.queryByLabelText("Rename Light")).not.toBeInTheDocument();
+  });
 });

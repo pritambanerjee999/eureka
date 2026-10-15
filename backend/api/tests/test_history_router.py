@@ -93,7 +93,7 @@ class TestGetHistory:
             "room_name": "room-1",
             "created_at": ts,
         }[key]
-        conn.fetch.return_value = [row]
+        conn.fetch.side_effect = [[row], []]  # messages, then titles
 
         resp = client.get("/history/user-abc")
 
@@ -315,3 +315,71 @@ class TestNotesRoomOwnership:
         session_mock.side_effect = ConnectionError("redis down")
         assert client.put("/notes/alice/room-00000001", json={"content": "x"}).status_code == 200
         conn.fetchval.assert_awaited_once()
+
+
+class TestSessionTitles:
+    """Renaming sessions: validation, ownership, and titles returned with history."""
+
+    @pytest.fixture()
+    def alice(self):
+        from dependencies import get_current_user
+        from main import app
+
+        conn = _make_mock_conn()
+        app.dependency_overrides[get_current_user] = lambda: "alice"
+        with (
+            patch("routers.history.get_pool", new_callable=AsyncMock, return_value=_make_mock_pool(conn)),
+            patch("routers.history.get_session", new_callable=AsyncMock, return_value=None),
+        ):
+            with TestClient(app) as c:
+                yield c, conn
+        app.dependency_overrides.clear()
+
+    def test_rename_upserts_clean_title(self, alice):
+        client, conn = alice
+        resp = client.put("/sessions/alice/room-00000001/title", json={"title": "  Gravity\n  part 2 "})
+        assert resp.status_code == 200
+        assert resp.json() == {"room_name": "room-00000001", "title": "Gravity part 2"}
+        sql, *args = conn.execute.call_args.args
+        assert "INSERT INTO session_titles" in sql
+        assert args == ["alice", "room-00000001", "Gravity part 2"]
+
+    def test_empty_title_resets(self, alice):
+        client, conn = alice
+        resp = client.put("/sessions/alice/room-00000001/title", json={"title": "   "})
+        assert resp.json()["title"] is None
+        assert "DELETE FROM session_titles" in conn.execute.call_args.args[0]
+
+    def test_overlong_title_rejected(self, alice):
+        client, conn = alice
+        resp = client.put("/sessions/alice/room-00000001/title", json={"title": "x" * 81})
+        assert resp.status_code == 422
+        conn.execute.assert_not_called()
+
+    def test_other_users_session_forbidden(self, alice):
+        client, conn = alice
+        assert client.put("/sessions/bob/room-00000001/title", json={"title": "x"}).status_code == 403
+        conn.execute.assert_not_called()
+
+    def test_room_not_owned_is_404(self, alice):
+        client, conn = alice
+        conn.fetchval.return_value = None
+        assert client.put("/sessions/alice/room-00000001/title", json={"title": "x"}).status_code == 404
+        conn.execute.assert_not_called()
+
+    def test_bad_room_name_rejected(self, alice):
+        client, _ = alice
+        assert client.put("/sessions/alice/not-a-room/title", json={"title": "x"}).status_code == 422
+
+    def test_unauthenticated_is_401(self):
+        from main import app
+
+        with TestClient(app) as c:
+            assert c.put("/sessions/alice/room-00000001/title", json={"title": "x"}).status_code == 401
+
+    def test_history_includes_titles(self, alice):
+        client, conn = alice
+        title_row = {"room_name": "room-00000001", "title": "Gravity part 2"}
+        conn.fetch.side_effect = [[], [title_row]]
+        resp = client.get("/history/alice")
+        assert resp.json()["titles"] == {"room-00000001": "Gravity part 2"}

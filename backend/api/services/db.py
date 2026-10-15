@@ -60,4 +60,13 @@ async def get_pool() -> asyncpg.Pool:
                     PRIMARY KEY (identity, room_name)
                 )
             """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS session_titles (
+                    identity   TEXT        NOT NULL,
+                    room_name  TEXT        NOT NULL,
+                    title      TEXT        NOT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    PRIMARY KEY (identity, room_name)
+                )
+            """)
     return _pool

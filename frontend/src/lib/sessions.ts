@@ -91,9 +91,13 @@ export function parseCheckpoint(content: string): { topic: string; insight: stri
  * first `session_start` are ignored.
  *
  * @param messages - All history messages for the user, oldest first.
+ * @param titles - Custom session names keyed by room name; they replace the topic title.
  * @returns Sessions, most recent first.
  */
-export function buildSessions(messages: HistoryMessage[]): Session[] {
+export function buildSessions(
+  messages: HistoryMessage[],
+  titles: Record<string, string> = {},
+): Session[] {
   const sessions: Session[] = [];
   let current: Session | null = null;
 
@@ -104,7 +108,7 @@ export function buildSessions(messages: HistoryMessage[]): Session[] {
       current = {
         key: room ?? `session-${sessions.length}`,
         roomName: room,
-        topic,
+        topic: (room && titles[room]) || topic,
         rawTopic,
         startedAt: msg.timestamp,
         messages: [],

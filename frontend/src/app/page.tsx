@@ -87,6 +87,7 @@ export default function Home() {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [history, setHistory] = useState<HistoryMessage[]>([]);
   const [notes, setNotes] = useState<NotesEntry[]>([]);
+  const [titles, setTitles] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<Session | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -124,6 +125,7 @@ export default function Home() {
     setSelected(null);
     setHistory([]);
     setNotes([]);
+    setTitles({});
     setLevel("spark");
   }, []);
 
@@ -139,6 +141,7 @@ export default function Home() {
           if (data?.messages) {
             const msgs: HistoryMessage[] = data.messages;
             setHistory(msgs);
+            setTitles(data.titles ?? {});
             setLevel(defaultLevelFromHistory(msgs));
           }
         })
@@ -223,6 +226,36 @@ export default function Home() {
     }
   };
 
+  /**
+   * Rename a past session (an empty title resets it to the topic name).
+   * Updates the sidebar immediately and rolls back if the save fails.
+   *
+   * @param session - The session to rename.
+   * @param title - New display name.
+   */
+  const handleRename = async (session: Session, title: string) => {
+    const room = session.roomName;
+    if (!user || !room) return;
+    const previous = titles;
+    setTitles((t) => {
+      const next = { ...t };
+      if (title) next[room] = title;
+      else delete next[room];
+      return next;
+    });
+    try {
+      const res = await authFetch(`/sessions/${user}/${room}/title`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+    } catch {
+      setTitles(previous);
+      setError("Couldn't rename that session. Please try again.");
+    }
+  };
+
   /** Trigger the level-assessment flow via a special topic key. */
   const handleAssess = () => handleConnect("__assess__");
 
@@ -258,7 +291,11 @@ export default function Home() {
     );
   }
 
-  const sessions = buildSessions(history);
+  const sessions = buildSessions(history, titles);
+  // Re-read the selected session so a rename shows up in the detail view too.
+  const selectedSession = selected
+    ? sessions.find((s) => s.key === selected.key) ?? selected
+    : null;
   const selectedNote = selected?.roomName
     ? notes.find((n) => n.room_name === selected.roomName)?.content ?? null
     : null;
@@ -273,6 +310,7 @@ export default function Home() {
         open={sidebarOpen}
         collapsed={sidebarCollapsed}
         onCollapse={() => setCollapsed(true)}
+        onRename={handleRename}
         onSelect={(s) => {
           setSelected(s);
           setSidebarOpen(false);
@@ -349,9 +387,9 @@ export default function Home() {
           </div>
         )}
 
-        {selected ? (
+        {selectedSession ? (
           <SessionDetail
-            session={selected}
+            session={selectedSession}
             note={selectedNote}
             loading={loading}
             onContinue={(rawTopic) => handleConnect(rawTopic)}

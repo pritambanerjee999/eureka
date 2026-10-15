@@ -10,7 +10,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 
 from dependencies import get_current_user, require_identity
-from models.schemas import NotesRequest
+from models.schemas import NotesRequest, TitleRequest
 from services.db import get_pool
 from services.session_service import get_session
 
@@ -63,8 +63,9 @@ async def get_history(identity: str, current_user: str = Depends(get_current_use
         HTTPException: 401 if unauthenticated, 403 if ``identity`` is not the caller.
 
     Returns:
-        A dict with keys ``identity`` and ``messages``, where ``messages``
-        includes ``role``, ``content``, ``room_name``, and ``timestamp``.
+        A dict with keys ``identity``, ``messages`` (each with ``role``,
+        ``content``, ``room_name`` and ``timestamp``) and ``titles`` (custom
+        session names, keyed by room name).
     """
     require_identity(identity, current_user)
     pool = await get_pool()
@@ -78,6 +79,10 @@ async def get_history(identity: str, current_user: str = Depends(get_current_use
             """,
             identity,
         )
+        title_rows = await conn.fetch(
+            "SELECT room_name, title FROM session_titles WHERE identity = $1",
+            identity,
+        )
     messages = [
         {
             "role": r["role"],
@@ -87,7 +92,8 @@ async def get_history(identity: str, current_user: str = Depends(get_current_use
         }
         for r in rows
     ]
-    return {"identity": identity, "messages": messages}
+    titles = {r["room_name"]: r["title"] for r in title_rows}
+    return {"identity": identity, "messages": messages, "titles": titles}
 
 
 @router.get("/notes/{identity}")
@@ -167,3 +173,51 @@ async def save_notes(
             content,
         )
     return {"saved": True}
+
+
+@router.put("/sessions/{identity}/{room_name}/title")
+async def rename_session(
+    identity: str,
+    body: TitleRequest,
+    room_name: str = Path(pattern=_ROOM_NAME_PATTERN),
+    current_user: str = Depends(get_current_user),
+) -> dict:
+    """Rename one of the caller's sessions (an empty title resets it).
+
+    Args:
+        identity: The participant identity path parameter.
+        body: Validated title (whitespace collapsed, at most 80 characters).
+        room_name: The session's LiveKit room.
+        current_user: Authenticated username; must match ``identity``.
+
+    Raises:
+        HTTPException: 403 if ``identity`` is not the caller, 404 if the room
+            isn't one of the caller's sessions.
+
+    Returns:
+        ``{"room_name", "title"}``, where ``title`` is ``None`` after a reset.
+    """
+    require_identity(identity, current_user)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        if not await _owns_room(conn, identity, room_name):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        if not body.title:
+            await conn.execute(
+                "DELETE FROM session_titles WHERE identity = $1 AND room_name = $2",
+                identity,
+                room_name,
+            )
+            return {"room_name": room_name, "title": None}
+        await conn.execute(
+            """
+            INSERT INTO session_titles (identity, room_name, title, updated_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (identity, room_name)
+            DO UPDATE SET title = EXCLUDED.title, updated_at = NOW()
+            """,
+            identity,
+            room_name,
+            body.title,
+        )
+    return {"room_name": room_name, "title": body.title}

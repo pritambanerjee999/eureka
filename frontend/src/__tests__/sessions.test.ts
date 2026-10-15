@@ -62,6 +62,16 @@ describe("buildSessions", () => {
     expect(buildSessions([])).toEqual([]);
   });
 
+  it("uses a custom title for a renamed session but keeps the raw topic for resuming", () => {
+    const ts = new Date().toISOString();
+    const [s] = buildSessions(
+      [{ role: "session_start", content: JSON.stringify({ room: "room-1", topic: "Light" }), timestamp: ts }],
+      { "room-1": "Light, take two" },
+    );
+    expect(s.topic).toBe("Light, take two");
+    expect(s.rawTopic).toBe("Light");
+  });
+
   it("ignores messages before the first session_start", () => {
     expect(buildSessions([msg("user", "orphan")])).toEqual([]);
   });
