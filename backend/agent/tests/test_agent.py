@@ -430,7 +430,8 @@ class TestSystemPromptGuardrails:
     def test_scope_is_physics_only(self):
         from prompts import PHYSICS_TUTOR_SYSTEM_PROMPT
 
-        assert "ONLY teach physics" in PHYSICS_TUTOR_SYSTEM_PROMPT
+        assert "Decline only when" in PHYSICS_TUTOR_SYSTEM_PROMPT
+        assert "never repeat the same decline" in PHYSICS_TUTOR_SYSTEM_PROMPT
         assert "Background audio" in PHYSICS_TUTOR_SYSTEM_PROMPT
 
 
@@ -446,7 +447,7 @@ class TestScopeReminder:
         await agent.on_user_turn_completed(turn_ctx, new_message=MagicMock())
 
         turn_ctx.add_message.assert_called_once_with(role="system", content=SCOPE_REMINDER)
-        assert "only teach physics" in SCOPE_REMINDER
+        assert "Decline only a clearly different subject" in SCOPE_REMINDER
 
 
 class TestSaveProgressLimits:
