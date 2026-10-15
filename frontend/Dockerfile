@@ -1,7 +1,7 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 
 FROM node:20-alpine AS builder
 WORKDIR /app
@@ -10,6 +10,11 @@ COPY . .
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
+
+# Test image (not used by the app): docker compose --profile test run --rm frontend-test
+FROM deps AS test
+COPY . .
+CMD ["npx", "jest"]
 
 FROM node:20-alpine AS runner
 WORKDIR /app

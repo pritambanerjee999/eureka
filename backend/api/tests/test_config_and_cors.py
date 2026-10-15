@@ -13,6 +13,14 @@ from config import Settings
 
 
 class TestJwtSecret:
+    def test_example_placeholder_rejected(self, monkeypatch):
+        """The .env.example placeholder is long enough but public, so it must not start the API."""
+        from config import Settings
+
+        monkeypatch.setenv("JWT_SECRET", "change-me-to-a-long-random-string")
+        with pytest.raises(ValidationError, match="placeholder"):
+            Settings(_env_file=None)
+
     def test_short_secret_refused(self, monkeypatch):
         """A weak signing secret must stop the service from starting."""
         monkeypatch.setenv("JWT_SECRET", "short")
