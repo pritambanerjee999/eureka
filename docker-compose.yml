@@ -1,9 +1,8 @@
 services:
   redis:
     image: redis:7-alpine
-    ports:
-      # Loopback only: Redis has no password, so never expose it to the network.
-      - "127.0.0.1:6379:6379"
+    # No host port: only the api and agent reach Redis, over the compose network.
+    # (Also avoids clashing with a Redis already running on the tester's machine.)
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -19,9 +18,7 @@ services:
       POSTGRES_DB: eureka
       POSTGRES_USER: eureka
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eureka}
-    ports:
-      # Loopback only: the database must not be reachable from other machines.
-      - "127.0.0.1:5432:5432"
+    # No host port: the database is only reachable from inside the compose network.
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -33,6 +30,7 @@ services:
   api:
     build:
       context: ./backend/api
+    restart: unless-stopped
     ports:
       - "8000:8000"
     env_file: .env
@@ -45,6 +43,7 @@ services:
   agent:
     build:
       context: ./backend/agent
+    restart: unless-stopped
     env_file: .env
     depends_on:
       redis:
@@ -57,10 +56,19 @@ services:
       context: ./frontend
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    restart: unless-stopped
     ports:
       - "3000:3000"
     depends_on:
       - api
+
+  # Frontend unit tests. Only runs when asked for:
+  #   docker compose --profile test run --rm frontend-test
+  frontend-test:
+    build:
+      context: ./frontend
+      target: test
+    profiles: ["test"]
 
 volumes:
   redis_data:
