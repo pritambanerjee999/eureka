@@ -12,3 +12,4 @@ coverage/
 # Editor
 .idea/
 .DS_Store
+*.tsbuildinfo
