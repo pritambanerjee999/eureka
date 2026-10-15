@@ -144,7 +144,7 @@ docker compose exec agent python -m pytest -q    # Agent: tutor behaviour, guard
 docker compose --profile test run --rm frontend-test   # Frontend: Jest + React Testing Library
 ```
 
-Expected results: **132 passed**, **94 passed** and **72 passed** (8 suites).
+Expected results: **140 passed**, **94 passed** and **78 passed** (8 suites).
 
 ### Manual test script (about 5 minutes)
 
@@ -158,6 +158,7 @@ Expected results: **132 passed**, **94 passed** and **72 passed** (8 suites).
 | 6 | Click **Mute** | Your mic is off (the button turns amber); unmute to continue |
 | 7 | Type in **My Notes**, then **End Session** | Back on the landing page; the session is at the top of the sidebar under *Today* |
 | 8 | Click that session in the sidebar | Transcript, checkpoints and your notes; **Continue this topic** starts a new session on it |
+| 8b | Hover the session and click the pencil, type a new name, press Enter | The sidebar and the session view show the new name, and it survives a page reload |
 | 9 | Click **New session** in the sidebar | An open session ("ask me anything") starts |
 | 10 | Click **Assess My Level** | Eureka asks three calibration questions, then tells you your level; the level picker preselects it next time |
 | 11 | Log out and create a second account | The sidebar is empty. The second user can't see the first user's history (the API returns 403). |
@@ -194,7 +195,7 @@ Browser (Next.js :3000)
   │                                   ├── signs LiveKit room token
   │                                   └── dispatches agent "eureka-tutor" to the room ──► LiveKit Cloud
   │
-  ├── GET /history, GET|PUT /notes  (Bearer JWT, own data only) ──► FastAPI ──► PostgreSQL
+  ├── GET /history, GET|PUT /notes, PUT /sessions/…/title  (Bearer JWT, own data only) ──► FastAPI ──► PostgreSQL
   │
   └── WebRTC audio ◄──────────────► LiveKit Cloud ◄────► Agent worker (agent)
                                                             ├── Silero VAD
@@ -228,6 +229,7 @@ There are five Docker services: `redis`, `postgres`, `api`, `agent` and `fronten
 | PostgreSQL | `users` | username, scrypt password hash | durable |
 | PostgreSQL | `conversations` | every turn plus `session_start`, `checkpoint` and `level` records, keyed by user | durable |
 | PostgreSQL | `notes` | the student's notes per session, keyed by (user, room) | durable |
+| PostgreSQL | `session_titles` | custom session names, keyed by (user, room) | durable |
 
 **Project layout**
 
@@ -244,7 +246,7 @@ There are five Docker services: `redis`, `postgres`, `api`, `agent` and `fronten
 ## Product features (and why)
 
 - **Accounts.** Username/password sign-up and login. History, notes and assessed level all belong to the account, so they follow you across browsers and devices.
-- **Chat-style history sidebar.** Past sessions sit in a left sidebar grouped by *Today / Yesterday / Previous 7 days / Older*, like a chat app. Click one to reread the transcript, see what you understood and your notes, and **Continue this topic** with one click. History buried at the bottom of a page doesn't get used; a sidebar does. You can hide the sidebar for more room.
+- **Chat-style history sidebar.** Past sessions sit in a left sidebar grouped by *Today / Yesterday / Previous 7 days / Older*, like a chat app. Click one to reread the transcript, see what you understood and your notes, and **Continue this topic** with one click. History buried at the bottom of a page doesn't get used; a sidebar does. Hover a session and click the pencil to **rename** it (handy when several sessions share a topic). You can hide the sidebar for more room.
 - **Level picker + spoken assessment.** Five levels (Spark → Singularity) tune the topic suggestions. **Assess My Level** runs a three-question spoken calibration. The agent saves the result with a tool call, and the UI preselects it next time.
 - **Topic grid.** Six branches of physics (mechanics, waves, electromagnetism, thermodynamics, quantum, relativity) with level-appropriate starter questions. Clicking one starts a session where Eureka speaks first: one vivid hook, three directions to explore, and a question about which one you want. The opening can't be interrupted by background noise. **New session** starts an open "ask me anything" session.
 - **Understanding checkpoints.** When a student explains a concept in their own words, the agent calls `save_progress`, and the result shows up as a ✓ badge in history. This rewards understanding rather than time spent.
@@ -268,7 +270,7 @@ There are five Docker services: `redis`, `postgres`, `api`, `agent` and `fronten
 
 **Per-user data isolation.** Every data endpoint checks ownership, and the checks are tested end to end against the running stack:
 - `/history/{user}` and `/notes/{user}` return 403 unless `{user}` is the signed-in user. Forged or `alg=none` tokens get 401.
-- Notes can only be saved against the caller's own sessions. The API checks the room's Redis session for a live room and the stored conversation for an old one; any other room returns 404.
+- Notes and session renames are only accepted for the caller's own sessions. The API checks the room's Redis session for a live room and the stored conversation for an old one; any other room returns 404.
 - `/token` ignores any client-supplied identity or room name. It derives both from the JWT and a random room name.
 - The agent writes checkpoints and levels to the identity the API stored for the room, not to whoever joined.
 - Redis and Postgres have no published ports, so the stores can't be read around the API.
