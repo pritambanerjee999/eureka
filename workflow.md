@@ -36,15 +36,50 @@ A later session in the same Claude Code CLI harness, on Opus 5.5 (`claude-opus-5
 - Harness: Claude Code CLI with persistent memory, Bash/Read/Edit/Write tools, and `AskUserQuestion` for scope decisions
 - Docker Compose for every build, test run and restart; `curl` and a headless `livekit.rtc` client for end-to-end checks
 
+### Claude Code (claude-opus-5-5): review, guardrails, polish and release
+The same Opus 5.5 session then took the project from "works on my machine" to something a reviewer can clone and run.
+
+**How I used it:**
+- **Code review, then a scoped fix.** I asked for a thorough review focused on guardrails and misuse. It returned findings ranked by severity, and I chose the scope ("security + guardrails only"). Fixes:
+  - server-generated room names (the client could previously join any room);
+  - topic validation against prompt injection;
+  - per-user rate limits and one live session per user;
+  - idle and maximum session timeouts;
+  - size-capped inputs;
+  - a required strong `JWT_SECRET` and locked-down CORS.
+
+  The remaining findings went into the README as known limitations.
+- **Live attack checks, not just unit tests.** After each security change it attacked the running stack:
+  - a second account tried to read or write the first one's history and notes, including uppercase and URL-encoded usernames;
+  - it sent tokens with a forged `sub` and `alg=none`;
+  - it tried to hijack a room through the `/token` body;
+  - it called `/token` repeatedly until the rate limit kicked in.
+
+  That's how it caught the worst bug of the project: Postgres and Redis were published on all interfaces, so anyone on the network could read every user's data without going through the API. It confirmed the exposure from the LAN IP, removed the host port mappings, and deleted the throwaway accounts afterwards.
+- **Diagnosing bugs from logs and stored data.** When I reported "I clicked a topic and it never started teaching", it read the agent logs and the Redis transcript for that room. My microphone had picked up a TV, and voice-activity detection kept interrupting the intro. The fix was to make the opening non-interruptible (verified against the installed SDK's `generate_reply` signature first).
+- **Testing prompts against the real model.** Prompt changes were checked by sending scripted conversations to GPT-4o with the production system prompt, not just by asserting on prompt text. That loop caught an over-correction. My "physics only" request first produced a rule so strict that it refused questions about the tutor itself and replies like "yeah". I sent screenshots, and it rewrote the rule to list what *is* in scope, replayed my exact failing conversation to confirm the fix, and saved the lesson to memory ("guardrails must not over-refuse").
+- **Mid-task feature requests.** While it was working I sent mute/pause, a collapsible sidebar, a footer-style how-to guide, and "does it use a semantic cache?". Each was built, tested, deployed and committed as its own change. Pause is a participant attribute that the agent watches; that logic lives in a small, unit-tested `PauseController`. The cache question got a reasoned "no" that is now in the README.
+- **Git and GitHub.**
+  - Branch-per-feature, with a commit per change and attribution in each message.
+  - When the push failed it diagnosed the missing SSH key and walked me through adding one.
+  - It wrote the PR description, and after the merge it noticed the PR had closed before the last two commits and merged those into `main` too.
+- **A second agent as an independent tester.** Its own testing was biased by knowing the code. So it spawned a separate general-purpose subagent with only the README and the repo URL. The subagent cloned from GitHub into a scratch folder, built the stack under its own compose project name (to protect my data), and ran all three test suites. It then drove my installed Chrome through Playwright with a fake microphone: sign up, start a topic, hear the intro, pause and resume, end the session, and check that a second user gets 403. It came back with screenshots and six README gaps, plus a real config issue: the `.env.example` placeholder JWT secret passed validation. All of these were fixed.
+
+**Specific models / harnesses:**
+- Model: `claude-opus-5-5` (Opus 5.5) for the main session and the tester subagent
+- Harness: Claude Code CLI, the `Agent` tool (general-purpose subagent), persistent memory
+- Tools driven through Claude Code: Docker Compose, `git` over SSH, the GitHub REST API (PR status), the OpenAI API (prompt evaluation), Playwright with headless Chrome (browser end-to-end test)
+
 ## Manual Work
 - Reviewed the architecture plan and approved the tech stack choices before implementation started
 - Verified the LiveKit Agents v1.0 API patterns matched what the `livekit-agents` package actually exports
 - Wrote the `PROMPT.md` content (copied verbatim from the assignment)
-- Decided product direction (accounts, chat-style history sidebar) and approved the scope change to route conversations through Redis
-- Tested the voice experience by hand in the browser and reported bugs with screenshots
+- Made the product decisions: accounts, chat-style history sidebar, mute/pause, footer guide, physics-only scope, and the change to route conversations through Redis
+- Chose the review scope (security and guardrails first) and approved each risky step: pushing, merging
+- Tested the voice experience by hand in the browser and reported bugs with screenshots: overlapping voices, a dead "New session" button, an intro cut off by TV audio, and over-refusal
+- Created the GitHub repo, added the SSH key, and merged the PR
 - Will record the video walkthrough manually
 
 ## Not Used
-- Cursor / Copilot — already have Claude Code in the terminal, no need for a separate IDE plugin
-- ChatGPT — same
-- GitHub Copilot — same
+- Cursor / GitHub Copilot: Claude Code in the terminal already covers editing, and it can also run Docker, tests and git, which an IDE plugin can't
+- ChatGPT: same reason; OpenAI models are used only inside the product (STT, tutor LLM, TTS) and for evaluating prompts
