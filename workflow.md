@@ -74,6 +74,18 @@ The same Opus 5.5 session then took the project from "works on my machine" to so
   - a Redis set the docs said was cleaned up when nothing ever removes from it, now listed as a known limitation instead.
 
   It also confirmed that `PROMPT.md` is byte-identical to the original commit.
+- **Thinking through scaling with it.** I asked how we'd cache FAQs, whether semantic caching makes sense, whether RAG on the topic would help, and what else matters at 10k sessions. It reasoned from this specific product, not a generic checklist:
+  - **Measured before claiming.** It counted the system prompt (~1,150 tokens, over OpenAI's 1,024-token threshold) before saying prompt caching already applies. It also checked that the per-turn reminder is appended at the end, so it doesn't break the cached prefix.
+  - **Ordered caching by safety.** In tutoring a wrong cached answer is worse than a miss, so the plan runs from exact and safe to fuzzy and guarded:
+    1. provider prompt caching;
+    2. intro text and audio keyed by topic and level;
+    3. pre-rendered fixed phrases;
+    4. reviewed FAQ answers;
+    5. a semantic cache, namespaced by topic, level and prompt version, used only for standalone questions, and calibrated on wrong-hit rate before launch.
+  - **RAG: not per turn.** It argued against per-turn RAG for general physics (the model already knows it, and retrieval adds latency to every voice reply). It named where RAG does pay off: curriculum alignment, a misconception and analogy bank, grounded facts and citations, and the student's own history. Its design retrieves once at session start, otherwise only through a tool call, and shares one vector index with the semantic cache.
+  - **Added the rest.** Observability, model routing, admission control, async persistence, graceful drain, multi-region, lifecycle webhooks and data retention.
+
+  It wrote all of this into the README's design decisions and scaling sections, kept consistent with the existing "no semantic cache in this version" decision.
 
 **Specific models / harnesses:**
 - Model: `claude-opus-5-5` (Opus 5.5) for the main session and the tester subagent
