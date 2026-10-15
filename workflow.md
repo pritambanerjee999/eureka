@@ -2,11 +2,13 @@
 
 ## AI Tools Used
 
-### Claude Code (claude-sonnet-4-6) via the CLI
-Primary tool for this entire project. Used it as an interactive pair programmer running directly in the terminal, not just for code generation but for architecture decisions and tradeoffs.
+Claude Code (the CLI) was the only AI coding tool used. The work happened in two phases: Sonnet 4.6 for the initial build, then Opus 5.5 for accounts, bug fixing, guardrails, testing and release (the sections below).
+
+### Claude Code (claude-sonnet-4-6): initial architecture and build
+Used as an interactive pair programmer running directly in the terminal, for architecture decisions and tradeoffs as well as code generation.
 
 **How I used it:**
-- Pasted the project prompt and asked it to design the full architecture before writing a single line of code. The planning agent (`subagent_type: Plan`) produced the directory tree, Redis key schema, LiveKit v1.0 API patterns, and scalability table that ended up in the README — in one shot.
+- Pasted the project prompt and asked it to design the full architecture before writing a single line of code. The planning agent (`subagent_type: Plan`) produced the directory tree, Redis key schema, LiveKit Agents 1.x API patterns (the project runs `livekit-agents` 1.8.6), and the first version of the scalability table in the README, in one shot.
 - Once the plan was reviewed and approved, ran a single "implement it" prompt. Claude wrote all ~36 source files in parallel (multiple `Write` tool calls at once), which meant the skeleton was complete in under 5 minutes.
 - Used it for live debugging — pasted Docker build errors back into the conversation and had it diff and fix specific files rather than regenerating everything.
 
@@ -65,6 +67,14 @@ The same Opus 5.5 session then took the project from "works on my machine" to so
   - It wrote the PR description, and after the merge it noticed the PR had closed before the last two commits and merged those into `main` too.
 - **A second agent as an independent tester.** Its own testing was biased by knowing the code. So it spawned a separate general-purpose subagent with only the README and the repo URL. The subagent cloned from GitHub into a scratch folder, built the stack under its own compose project name (to protect my data), and ran all three test suites. It then drove my installed Chrome through Playwright with a fake microphone: sign up, start a topic, hear the intro, pause and resume, end the session, and check that a second user gets 403. It came back with screenshots and six README gaps, plus a real config issue: the `.env.example` placeholder JWT secret passed validation. All of these were fixed.
 
+- **Auditing the docs against the code and the brief.** As a final pass it went through `PROMPT.md` requirement by requirement and checked each factual claim in the markdown against the source. That meant diffing every setting the code reads against `.env.example`, and checking TTLs, limits, pool sizes and topic counts. It caught and fixed four things:
+  - two variables missing from `.env.example`;
+  - "five" physics branches where there are six;
+  - room-name entropy overstated: a UUID4 has 122 random bits, not 128;
+  - a Redis set the docs said was cleaned up when nothing ever removes from it, now listed as a known limitation instead.
+
+  It also confirmed that `PROMPT.md` is byte-identical to the original commit.
+
 **Specific models / harnesses:**
 - Model: `claude-opus-5-5` (Opus 5.5) for the main session and the tester subagent
 - Harness: Claude Code CLI, the `Agent` tool (general-purpose subagent), persistent memory
@@ -72,7 +82,7 @@ The same Opus 5.5 session then took the project from "works on my machine" to so
 
 ## Manual Work
 - Reviewed the architecture plan and approved the tech stack choices before implementation started
-- Verified the LiveKit Agents v1.0 API patterns matched what the `livekit-agents` package actually exports
+- Verified the LiveKit Agents 1.x API patterns matched what the `livekit-agents` package actually exports
 - Wrote the `PROMPT.md` content (copied verbatim from the assignment)
 - Made the product decisions: accounts, chat-style history sidebar, mute/pause, footer guide, physics-only scope, and the change to route conversations through Redis
 - Chose the review scope (security and guardrails first) and approved each risky step: pushing, merging
