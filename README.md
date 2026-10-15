@@ -288,7 +288,15 @@ All limits are configurable in `.env` (see `.env.example`).
 
 **Tools for state the UI needs.** Level and checkpoints are saved through LLM tool calls (`save_level`, `save_progress`) rather than by parsing transcripts, so the model decides when real understanding happened and the data arrives structured.
 
-**No semantic cache.** Each tutoring reply depends on the whole conversation so far, so cache hits would be rare and a wrong hit would answer the wrong context. Most per-turn latency is speech synthesis, which a text cache doesn't remove. The one good candidate is the deterministic topic intro (same topic + level → same opening), where caching the text and audio would make the first words instant.
+**No semantic cache in this version.** Each tutoring reply depends on the whole conversation so far, so most turns can't be cached, and a wrong hit would answer the wrong context. Most per-turn latency is also speech synthesis, which a text cache doesn't remove. At scale, caching becomes worth it in layers, from exact and safe (intro and FAQ audio) to fuzzy and guarded (semantic): see [Caching](#caching-cheapest-wins-first).
+
+**No RAG in this version, and where it would help.** For core physics, GPT-4o already knows the material. Retrieval on every turn would add an embedding call and a vector search (roughly 50–150 ms) to a voice loop where latency is felt, for little gain in accuracy. RAG becomes worth it when the tutor has to match something the model doesn't know:
+- **A specific curriculum or textbook.** Use its order, notation and worked examples (e.g. a school syllabus). This is the strongest case for selling to schools.
+- **A curated misconception and analogy bank per topic.** This is what makes a tutor good rather than just correct.
+- **Grounded facts and references.** Constants, experiment details, and pointers to a section of the Feynman Lectures or a PhET simulation.
+- **The student's own history.** Past checkpoints and confusions, so the tutor builds on what they already understood.
+
+The design keeps latency flat. Retrieve once at session start for the chosen topic and level, and put the results into the context. For anything mid-conversation, expose retrieval as a tool the model calls only when it needs a fact. That way most turns pay nothing. The same vector index (`pgvector` or Redis Stack) would serve RAG and the semantic cache.
 
 **Why Feynman-style physics.** Physics has a clear topic structure and benefits enormously from analogy and Socratic checking. A tutor that *checks understanding* instead of *delivering information* is a better product, and physics is where that gap is largest.
 
@@ -304,6 +312,35 @@ All limits are configurable in `.env` (see `.env.example`).
 | **PostgreSQL** | Single instance, pool of 5 | Put PgBouncer in front, size the pools, and add a read replica for history and notes reads. Partition `conversations` by month (or by user hash). Batch turn inserts from the agent if write volume demands it. |
 | **LiveKit** | LiveKit Cloud | Already distributed. If self-hosting, run LiveKit in cluster mode with a TURN fleet. |
 | **OpenAI** | Per-turn API calls | Raise org rate limits, add retry with backoff, and consider cheaper or faster models (e.g. `gpt-4o-mini`, streaming TTS) for simple turns. Cost, not compute, becomes the main constraint. |
+
+
+### Caching: cheapest wins first
+
+At 10k sessions, OpenAI is the main cost and the main source of latency, so caching pays off. In a tutor, though, a wrong cached answer is worse than a cache miss. The plan therefore goes from exact, safe caches to fuzzy, guarded ones.
+
+1. **Provider prompt caching (already in effect).** OpenAI automatically caches identical prompt prefixes of 1,024+ tokens, which cuts input cost and time-to-first-token. Every request starts with the same ~1,150-token system prompt, and the per-turn scope reminder is appended at the end, so the prefix stays identical across turns and sessions. Rule to keep: never put per-user or per-topic text into the system prompt.
+2. **Intro cache (exact key).** The opening depends only on *(topic, level, returning or not)*. Keep 3–5 pre-generated variants per key, including the TTS audio, in Redis or object storage, and rotate between them. Every session start then plays its first words instantly with no LLM or TTS call.
+3. **Fixed-phrase audio cache.** Pre-render the TTS audio once for lines the agent repeats: the farewells, the timeout messages, the pause "welcome back", the off-topic declines.
+4. **FAQ cache (normalized exact match).** Students ask the same opening questions ("why is the sky blue?", "what does E=mc² mean?"). For the top questions per topic and level, keep human-reviewed answers with pre-rendered audio, and match on the normalized transcript (lowercase, fillers stripped). Use it only for a *standalone* question, never one that depends on earlier turns. The agent still follows up with its Socratic check question.
+5. **Semantic cache (guarded, behind a flag).**
+   - **Lookup:** embed the question (e.g. `text-embedding-3-small`) and search a vector index (Redis Stack or `pgvector`) namespaced by *topic + level + prompt version*.
+   - **Serve:** only above a high similarity threshold and only for context-free turns. Otherwise fall through to the LLM.
+   - **Admit:** store an answer only when it was reviewed or the session reached a checkpoint, never one that quotes the student.
+   - **Invalidate:** a TTL, plus a namespace that changes with the prompt version.
+   - **Calibrate first:** tune the threshold offline on real transcripts by measuring hit rate *and* wrong-hit rate, then turn it on gradually with every hit logged for audit.
+
+   Of the five layers, this is the one with the highest risk of a wrong answer.
+
+### Other changes at scale
+
+- **Observability.** Per-turn latency split into STT / LLM / TTS (LiveKit Agents emits these metrics), cost per session-minute, error rates, and alerts on worker load and dispatch backlog. You can't scale what you can't see.
+- **Model routing.** Send simple turns (acknowledgements, "can you repeat that?") to a small model and keep `gpt-4o` for explanations. This cuts cost without making the teaching worse.
+- **Admission control.** When worker capacity is full, `/token` should return "busy, try again shortly" instead of a silent room. Add per-user daily minute quotas on top of the per-minute rate limit.
+- **Async persistence.** The agent pushes turns to a Redis Stream, and a writer batches the inserts into Postgres. Database latency then never touches the voice loop, and a database outage just delays writes.
+- **Graceful drain on deploy.** Draining workers finish their live sessions before shutting down, so deploys don't cut students off mid-lesson.
+- **Multi-region.** Run agent workers close to LiveKit's edge and to users. A voice round trip is very sensitive to distance.
+- **Session lifecycle via webhooks.** Use LiveKit `room_finished` webhooks to mark sessions ended and clean up Redis (this also fixes the `active_rooms` growth below).
+- **Data lifecycle.** Set a retention policy, archive old conversations to object storage, and add a per-user export and delete path.
 
 ---
 
