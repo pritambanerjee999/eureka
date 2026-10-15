@@ -182,6 +182,40 @@ class TestUserKey:
         assert result == "fallback-room"
 
 
+class TestToolsUseStoredIdentity:
+    """Tool writes go to the identity the API stored, not whoever joined the room first."""
+
+    @pytest.mark.asyncio
+    async def test_save_level_uses_stored_identity(self, mock_db):
+        append_mock, _ = mock_db
+        from agent import PhysicsTutorAgent
+
+        session = _build_session(participant_identities=["intruder"])
+        agent = PhysicsTutorAgent(topic="Light", room_name="room-7", identity="alice")
+        agent.session = session
+        context = MagicMock()
+        context.session = session
+
+        await agent.save_level(context, "field")
+
+        assert append_mock.call_args.args[0] == "alice"
+
+    @pytest.mark.asyncio
+    async def test_save_progress_uses_stored_identity(self, mock_db):
+        append_mock, _ = mock_db
+        from agent import PhysicsTutorAgent
+
+        session = _build_session(participant_identities=["intruder"])
+        agent = PhysicsTutorAgent(topic="Light", room_name="room-7", identity="alice")
+        agent.session = session
+        context = MagicMock()
+        context.session = session
+
+        await agent.save_progress(context, "Refraction", "Light slows in glass.")
+
+        assert append_mock.call_args.args[0] == "alice"
+
+
 class TestSaveLevel:
     @pytest.mark.asyncio
     async def test_valid_level_appends_message(self, mock_db):

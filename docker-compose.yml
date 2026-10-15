@@ -2,7 +2,8 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      # Loopback only: Redis has no password, so never expose it to the network.
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -19,7 +20,8 @@ services:
       POSTGRES_USER: eureka
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eureka}
     ports:
-      - "5432:5432"
+      # Loopback only: the database must not be reachable from other machines.
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

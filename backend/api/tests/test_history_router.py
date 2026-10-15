@@ -22,6 +22,8 @@ def _make_mock_conn(fetch_result=None, fetchrow_result=None, execute_result=None
     conn.fetch = AsyncMock(return_value=fetch_result or [])
     conn.fetchrow = AsyncMock(return_value=fetchrow_result)
     conn.execute = AsyncMock(return_value=execute_result)
+    # Room-ownership lookup: owned by default.
+    conn.fetchval = AsyncMock(return_value=1)
     return conn
 
 
@@ -56,7 +58,10 @@ def fresh_client():
         return request.path_params.get("identity", "")
 
     app.dependency_overrides[get_current_user] = _as_path_identity
-    with patch("routers.history.get_pool", new_callable=AsyncMock, return_value=pool):
+    with (
+        patch("routers.history.get_pool", new_callable=AsyncMock, return_value=pool),
+        patch("routers.history.get_session", new_callable=AsyncMock, return_value=None),
+    ):
         with TestClient(app) as c:
             yield c, conn
     app.dependency_overrides.clear()
@@ -220,7 +225,10 @@ class TestHistoryAuth:
 
         conn = _make_mock_conn()
         app.dependency_overrides[get_current_user] = lambda: "alice"
-        with patch("routers.history.get_pool", new_callable=AsyncMock, return_value=_make_mock_pool(conn)):
+        with (
+            patch("routers.history.get_pool", new_callable=AsyncMock, return_value=_make_mock_pool(conn)),
+            patch("routers.history.get_session", new_callable=AsyncMock, return_value=None),
+        ):
             with TestClient(app) as c:
                 yield c, conn
         app.dependency_overrides.clear()
@@ -252,3 +260,58 @@ class TestHistoryAuth:
         with TestClient(app) as c:
             resp = c.request(method, path, json={"content": "x"} if method == "put" else None)
         assert resp.status_code == 401
+
+
+class TestNotesRoomOwnership:
+    """Notes can only be saved against the caller's own sessions."""
+
+    @pytest.fixture()
+    def alice(self):
+        from dependencies import get_current_user
+        from main import app
+
+        conn = _make_mock_conn()
+        session_mock = AsyncMock(return_value=None)
+        app.dependency_overrides[get_current_user] = lambda: "alice"
+        with (
+            patch("routers.history.get_pool", new_callable=AsyncMock, return_value=_make_mock_pool(conn)),
+            patch("routers.history.get_session", session_mock),
+        ):
+            with TestClient(app) as c:
+                yield c, conn, session_mock
+        app.dependency_overrides.clear()
+
+    def test_live_room_owned_via_redis(self, alice):
+        client, conn, session_mock = alice
+        session_mock.return_value = {"identity": "alice", "topic": "Light"}
+        assert client.put("/notes/alice/room-00000001", json={"content": "x"}).status_code == 200
+        conn.fetchval.assert_not_called()
+        conn.execute.assert_awaited_once()
+
+    def test_live_room_of_another_user_is_404(self, alice):
+        """Bob's live room can't be used, even though the notes row would be Alice's."""
+        client, conn, session_mock = alice
+        session_mock.return_value = {"identity": "bob", "topic": "Light"}
+        resp = client.put("/notes/alice/room-00000001", json={"content": "x"})
+        assert resp.status_code == 404
+        conn.execute.assert_not_called()
+
+    def test_past_room_owned_via_conversations(self, alice):
+        client, conn, _ = alice
+        conn.fetchval.return_value = 1
+        assert client.put("/notes/alice/room-00000001", json={"content": "x"}).status_code == 200
+        args = conn.fetchval.call_args.args
+        assert args[1:] == ("alice", "room-00000001")
+
+    def test_unknown_room_is_404(self, alice):
+        client, conn, _ = alice
+        conn.fetchval.return_value = None
+        resp = client.put("/notes/alice/room-00000001", json={"content": "x"})
+        assert resp.status_code == 404
+        conn.execute.assert_not_called()
+
+    def test_redis_outage_falls_back_to_db(self, alice):
+        client, conn, session_mock = alice
+        session_mock.side_effect = ConnectionError("redis down")
+        assert client.put("/notes/alice/room-00000001", json={"content": "x"}).status_code == 200
+        conn.fetchval.assert_awaited_once()

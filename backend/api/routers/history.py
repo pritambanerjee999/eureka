@@ -5,16 +5,50 @@ Author: Pritam
 Date: 2026-10-12
 """
 
-from fastapi import APIRouter, Depends, Path
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 
 from dependencies import get_current_user, require_identity
 from models.schemas import NotesRequest
 from services.db import get_pool
+from services.session_service import get_session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 # Server-generated room names only (8-hex legacy or 32-hex current).
 _ROOM_NAME_PATTERN = r"^room-[0-9a-f]{8,32}$"
+
+
+async def _owns_room(conn, identity: str, room_name: str) -> bool:
+    """Whether ``room_name`` is one of ``identity``'s sessions.
+
+    A live room is checked against its Redis session (written by ``/token``);
+    an older one against the stored conversation.
+
+    Args:
+        conn: An acquired asyncpg connection.
+        identity: The authenticated username.
+        room_name: The room the notes belong to.
+
+    Returns:
+        True if the room belongs to ``identity``.
+    """
+    try:
+        session = await get_session(room_name)
+    except Exception as exc:
+        logger.warning("Redis session lookup failed for %s: %s", room_name, exc)
+        session = None
+    if session is not None:
+        return session.get("identity") == identity
+    found = await conn.fetchval(
+        "SELECT 1 FROM conversations WHERE identity = $1 AND room_name = $2 LIMIT 1",
+        identity,
+        room_name,
+    )
+    return bool(found)
 
 
 @router.get("/history/{identity}")
@@ -107,6 +141,10 @@ async def save_notes(
         room_name: The LiveKit room identifier.
         body: Validated notes body (string ``content``, size-capped).
 
+    Raises:
+        HTTPException: 403 if ``identity`` is not the caller, 404 if the room
+            isn't one of the caller's sessions.
+
     Returns:
         A dict confirming the save operation.
     """
@@ -114,6 +152,9 @@ async def save_notes(
     require_identity(identity, current_user)
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # 404 rather than 403 so the response doesn't reveal whether the room exists.
+        if not await _owns_room(conn, identity, room_name):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
         await conn.execute(
             """
             INSERT INTO notes (identity, room_name, content, updated_at)

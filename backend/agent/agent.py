@@ -269,7 +269,8 @@ class PhysicsTutorAgent(Agent):
         if level not in valid:
             return f"Unknown level '{level}'. Use one of: {', '.join(sorted(valid))}."
         room = _room(context.session)
-        key = _user_key_from_room(room)
+        # The identity the API stored for this room, not whoever joined first.
+        key = self._identity or _user_key_from_room(room)
         await append_message(key, "level", level, room_name=room.name)
         return f"Level set to {level}."
 
@@ -295,7 +296,8 @@ class PhysicsTutorAgent(Agent):
             A confirmatory string message acknowledging the saved milestone.
         """
         room = _room(context.session)
-        key = _user_key_from_room(room)
+        # The identity the API stored for this room, not whoever joined first.
+        key = self._identity or _user_key_from_room(room)
         topic = topic.strip()[:_TOOL_TOPIC_MAX]
         insight = insight.strip()[:_TOOL_INSIGHT_MAX]
         await append_message(
