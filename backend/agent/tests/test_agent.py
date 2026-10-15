@@ -130,6 +130,37 @@ class TestOnEnterWithTopic:
         assert len(append_calls) == 1
 
 
+class TestOpeningNotInterruptible:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("topic", ["Bouncing & collisions", "__assess__", "__open__"])
+    async def test_opening_cannot_be_interrupted(self, mock_db, topic):
+        """Background audio must not cut off the opening before the student hears it."""
+        from agent import PhysicsTutorAgent
+
+        session = _build_session(participant_identities=["student-1"])
+        agent = PhysicsTutorAgent(topic=topic, room_name="room-1")
+        agent.session = session
+
+        await agent.on_enter()
+
+        assert session.generate_reply.call_args.kwargs["allow_interruptions"] is False
+
+    @pytest.mark.asyncio
+    async def test_resume_cannot_be_interrupted(self, mock_db):
+        from agent import PhysicsTutorAgent
+
+        session = _build_session(participant_identities=["student-1"])
+        agent = PhysicsTutorAgent(
+            topic="Light", room_name="room-1",
+            prior_turns=[{"role": "assistant", "content": "Light bends."}],
+        )
+        agent.session = session
+
+        await agent.on_enter()
+
+        assert session.generate_reply.call_args.kwargs["allow_interruptions"] is False
+
+
 class TestUserKey:
     def test_user_key_returns_first_remote_participant(self):
         """_user_key_from_room should return the first remote participant identity."""
