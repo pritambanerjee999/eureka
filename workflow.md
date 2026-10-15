@@ -13,7 +13,7 @@ Claude Code was my only AI coding tool. It runs in the terminal, so besides writ
 
 **1. Plan first, then build.** I gave Sonnet the assignment and asked for a full design before any code: folder layout, Redis keys, LiveKit API usage, and a scaling plan. I reviewed it, then asked it to implement. It wrote about 36 files in one go, and I pasted Docker errors back to it until everything ran.
 
-**2. Build features in small steps.** With Opus I added accounts, a chat-style history sidebar, mute and pause, and a how-to guide. I often sent the next request, or a screenshot of a bug, while it was still working, and it folded that in. Every change came with tests and a Docker rebuild before it called the change done.
+**2. Build features in small steps.** With Opus I added accounts, a chat-style history sidebar, mute and pause, and a how-to guide. Later I added renaming sessions in the sidebar, because several sessions on the same topic all had the same name. It went in as a small, complete change: a database table, an endpoint with the same ownership check as notes, inline editing in the sidebar, and tests. It also checked the rename against the live API, including blocking another user. I often sent the next request, or a screenshot of a bug, while it was still working, and it folded that in. Every change came with tests and a Docker rebuild before it called the change done.
 
 **3. Debug from evidence.** I reported bugs as I saw them, and it checked logs and stored data before changing code:
 - *Two voices talking at once.* The logs showed two agents per room. LiveKit was auto-sending an unnamed worker on top of ours. Fix: name the worker.
@@ -38,7 +38,7 @@ Claude Code was my only AI coding tool. It runs in the terminal, so besides writ
 - **A fresh agent as a tester.** It had no knowledge of the code, so it caught gaps I'd have missed.
 
 ## What I did myself
-- Approved the design and made the product decisions: accounts, history sidebar, mute and pause, physics-only scope.
+- Approved the design and made the product decisions: accounts, history sidebar, session renaming, mute and pause, physics-only scope.
 - Tested the voice tutor by hand and reported bugs with screenshots.
 - Chose what to fix first and approved pushes and merges.
 - Set up the GitHub repo and SSH key, and merged the PR.
