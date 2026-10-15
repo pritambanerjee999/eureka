@@ -41,7 +41,6 @@ Claude Code was my only AI coding tool. It runs in the terminal, so besides writ
 - Approved the design and made the product decisions: accounts, history sidebar, session renaming, mute and pause, physics-only scope.
 - Tested the voice tutor by hand and reported bugs with screenshots.
 - Chose what to fix first and approved pushes and merges.
-- Set up the GitHub repo and SSH key, and merged the PR.
 - Copied `PROMPT.md` from the assignment and recorded the video walkthrough.
 
 ## Not used
