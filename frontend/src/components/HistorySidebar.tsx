@@ -18,7 +18,12 @@ interface Props {
   /** Whether the drawer is open on small screens (always visible on md+). */
   open: boolean;
   onSelect: (session: Session) => void;
+  /** Start a new open-ended voice session. */
   onNewSession: () => void;
+  /** Return to the topic picker. */
+  onHome: () => void;
+  /** Disables New session while a token request is in flight. */
+  loading?: boolean;
   onLogout: () => void;
   onClose: () => void;
 }
@@ -36,6 +41,8 @@ export default function HistorySidebar({
   open,
   onSelect,
   onNewSession,
+  onHome,
+  loading = false,
   onLogout,
   onClose,
 }: Props) {
@@ -56,19 +63,25 @@ export default function HistorySidebar({
       >
         {/* Brand + new session */}
         <div className="p-3 border-b border-white/5">
-          <div className="flex items-center gap-2 px-2 h-10">
+          <button
+            onClick={onHome}
+            aria-label="Home: pick a topic"
+            className="flex items-center gap-2 px-2 h-10 rounded-lg hover:bg-white/5 transition-colors"
+          >
             <span className="text-xl">⚛</span>
             <span className="font-bold text-lg tracking-tight">Eureka</span>
-          </div>
+          </button>
           <button
             onClick={onNewSession}
+            disabled={loading}
             className="mt-2 w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-white/10
-                       text-sm text-white/80 hover:bg-white/5 hover:border-white/20 transition-colors"
+                       text-sm text-white/80 hover:bg-white/5 hover:border-white/20 transition-colors
+                       disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M8 3v10M3 8h10" />
             </svg>
-            New session
+            {loading ? "Connecting…" : "New session"}
           </button>
         </div>
 

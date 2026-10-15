@@ -26,6 +26,7 @@ function renderSidebar(overrides: Partial<React.ComponentProps<typeof HistorySid
     open: false,
     onSelect: jest.fn(),
     onNewSession: jest.fn(),
+    onHome: jest.fn(),
     onLogout: jest.fn(),
     onClose: jest.fn(),
     ...overrides,
@@ -62,5 +63,16 @@ describe("HistorySidebar", () => {
     fireEvent.click(screen.getByText("Log out"));
     expect(props.onNewSession).toHaveBeenCalled();
     expect(props.onLogout).toHaveBeenCalled();
+  });
+
+  it("goes home when the brand is clicked", () => {
+    const props = renderSidebar();
+    fireEvent.click(screen.getByLabelText(/home/i));
+    expect(props.onHome).toHaveBeenCalled();
+  });
+
+  it("disables New session while connecting", () => {
+    renderSidebar({ loading: true });
+    expect(screen.getByText("Connecting…").closest("button")).toBeDisabled();
   });
 });

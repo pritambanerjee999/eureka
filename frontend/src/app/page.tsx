@@ -248,9 +248,14 @@ export default function Home() {
           setSidebarOpen(false);
         }}
         onNewSession={() => {
+          setSidebarOpen(false);
+          handleConnect("__open__");
+        }}
+        onHome={() => {
           setSelected(null);
           setSidebarOpen(false);
         }}
+        loading={loading}
         onLogout={handleLogout}
         onClose={() => setSidebarOpen(false)}
       />

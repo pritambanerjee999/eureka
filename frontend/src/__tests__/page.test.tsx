@@ -221,14 +221,25 @@ describe("Home page — history sidebar", () => {
     expect(JSON.parse(tokenCall![1].body).topic).toBe("Light");
   });
 
-  it("returns to the topic picker on New session", async () => {
+  it("returns to the topic picker when the brand is clicked", async () => {
     routeFetch({ "/history": () => makeOkResponse({ messages: history }) });
     await renderHome();
     await act(async () => {
       fireEvent.click(await screen.findByText("Light"));
     });
-    fireEvent.click(screen.getByText("New session"));
+    fireEvent.click(screen.getByLabelText(/home/i));
     expect(screen.getByText("Classical Mechanics")).toBeInTheDocument();
+  });
+
+  it("starts an open voice session on New session", async () => {
+    await renderHome();
+    await act(async () => {
+      fireEvent.click(screen.getByText("New session"));
+    });
+
+    await waitFor(() => expect(screen.getByTestId("voice-room")).toBeInTheDocument());
+    const tokenCall = mockFetch.mock.calls.find((c) => String(c[0]).includes("/token"));
+    expect(JSON.parse(tokenCall![1].body).topic).toBe("__open__");
   });
 });
 
