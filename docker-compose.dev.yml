@@ -1,0 +1,36 @@
+# Dev overlay: mounts source into the containers and reloads on change.
+# Not loaded by default. Use:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+
+services:
+  postgres:
+    # Loopback only, for a local DB client. The base file publishes no port.
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  api:
+    volumes:
+      - ./backend/api:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  agent:
+    volumes:
+      - ./backend/agent:/app
+    # livekit-agents 1.8 dropped in-process reload from `main.py dev`, so
+    # watchfiles restarts the worker on .py changes (ends any live session).
+    command: watchfiles --filter python "python main.py start" /app
+
+  frontend:
+    build:
+      context: ./frontend
+      target: deps
+    volumes:
+      - ./frontend:/app
+      # Keep the image's node_modules and .next instead of the host's.
+      - /app/node_modules
+      - /app/.next
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      # Docker Desktop on macOS doesn't always forward file events; poll instead.
+      WATCHPACK_POLLING: "true"
+    command: npm run dev -- -H 0.0.0.0 -p 3000
