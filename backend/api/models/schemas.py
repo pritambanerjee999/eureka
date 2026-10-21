@@ -31,9 +31,12 @@ class TokenRequest(BaseModel):
         topic: Optional topic key selected by the user (e.g. ``"Light"``);
             ``"__open__"`` means free-form chat, ``"__assess__"`` triggers the
             level-calibration flow.
+        from_plan: True when the topic was picked from the study plan; the
+            agent then starts teaching it straight away.
     """
 
     topic: str | None = Field(default=None, max_length=TOPIC_MAX_LEN)
+    from_plan: bool = False
 
     @field_validator("topic")
     @classmethod

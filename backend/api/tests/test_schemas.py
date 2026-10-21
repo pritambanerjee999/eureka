@@ -16,6 +16,11 @@ class TestTokenRequest:
         """TokenRequest with no arguments should have topic None."""
         assert TokenRequest().topic is None
 
+    def test_from_plan_defaults_false(self):
+        """from_plan is opt-in; only study-plan picks set it."""
+        assert TokenRequest().from_plan is False
+        assert TokenRequest(topic="Momentum", from_plan=True).from_plan is True
+
     def test_client_room_name_is_dropped(self):
         """room_name is no longer accepted from clients (server generates it)."""
         req = TokenRequest(room_name="room-victim", topic="Light")

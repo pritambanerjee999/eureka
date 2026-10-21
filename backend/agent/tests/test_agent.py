@@ -499,3 +499,46 @@ class TestSaveProgressLimits:
 
         content = append_mock.call_args[0][2]
         assert content == f"[Understood] {'T' * 80}: {'I' * 300}"
+
+
+class TestStudyPlanIntro:
+    @pytest.mark.asyncio
+    async def test_plan_topic_starts_teaching_without_subtopic_menu(self, mock_db):
+        """A topic picked from the study plan is taught right away, not offered as a menu."""
+        from agent import PhysicsTutorAgent
+
+        session = _build_session(participant_identities=["student-1"])
+        agent = PhysicsTutorAgent(topic="Momentum", room_name="room-1", source="plan")
+        agent.session = session
+
+        await agent.on_enter()
+
+        instructions = session.generate_reply.call_args.kwargs["instructions"]
+        assert "Momentum" in instructions
+        assert "start teaching it right away" in instructions
+        assert "three" not in instructions
+
+    @pytest.mark.asyncio
+    async def test_plan_source_still_records_session_start(self, mock_db):
+        from agent import PhysicsTutorAgent
+
+        append_mock, _ = mock_db
+        session = _build_session(participant_identities=["student-1"])
+        agent = PhysicsTutorAgent(topic="Momentum", room_name="room-1", source="plan")
+        agent.session = session
+
+        await agent.on_enter()
+
+        assert append_mock.call_args_list[0].args[1] == "session_start"
+
+    @pytest.mark.asyncio
+    async def test_plan_source_ignored_for_special_topics(self, mock_db):
+        from agent import PhysicsTutorAgent
+
+        session = _build_session(participant_identities=["student-1"])
+        agent = PhysicsTutorAgent(topic="__assess__", room_name="room-1", source="plan")
+        agent.session = session
+
+        await agent.on_enter()
+
+        assert "Newton" in session.generate_reply.call_args.kwargs["instructions"]

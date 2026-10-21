@@ -146,3 +146,21 @@ class TestClearHistory:
         with patch("services.redis_service.aioredis.from_url", return_value=r):
             await redis_service.clear_history("room-10")
         r.delete.assert_called_once_with("conversation:room-10")
+
+
+class TestGetSessionSource:
+    @pytest.mark.asyncio
+    async def test_reads_source_field(self):
+        r = _make_redis_mock()
+        r.hget.return_value = b"plan"
+        with patch("services.redis_service.aioredis.from_url", return_value=r):
+            assert await redis_service.get_session_source("room-1") == "plan"
+        r.hget.assert_called_once_with("session:room-1", "source")
+        r.aclose.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_missing_source_is_none(self):
+        r = _make_redis_mock()
+        r.hget.return_value = None
+        with patch("services.redis_service.aioredis.from_url", return_value=r):
+            assert await redis_service.get_session_source("room-1") is None

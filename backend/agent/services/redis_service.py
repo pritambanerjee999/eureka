@@ -60,6 +60,25 @@ async def get_session_topic(room_name: str) -> str | None:
         await r.aclose()
 
 
+async def get_session_source(room_name: str) -> str | None:
+    """Retrieve where the session's topic came from (``"plan"`` for the study plan).
+
+    Args:
+        room_name: The LiveKit room identifier.
+
+    Returns:
+        The source string, or ``None`` if unset or the session key has expired.
+    """
+    r = aioredis.from_url(settings.REDIS_URL)
+    try:
+        raw = await r.hget(f"session:{room_name}", "source")
+        if raw is None:
+            return None
+        return raw.decode() if isinstance(raw, bytes) else raw
+    finally:
+        await r.aclose()
+
+
 async def append_message(room_name: str, role: str, content: str) -> None:
     """Append a message to the Redis conversation list for the given room.
 

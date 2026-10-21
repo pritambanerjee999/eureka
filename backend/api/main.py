@@ -16,6 +16,7 @@ logging.basicConfig(level=logging.INFO)
 
 from routers.auth import router as auth_router
 from routers.history import router as history_router
+from routers.study_plan import router as study_plan_router
 from routers.token import router as token_router
 
 app = FastAPI(title="Eureka API", version="1.0.0")
@@ -33,6 +34,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(token_router)
 app.include_router(history_router)
+app.include_router(study_plan_router)
 
 
 @app.get("/health")

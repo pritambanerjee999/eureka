@@ -17,7 +17,11 @@ from agent import PhysicsTutorAgent, safe_topic
 from config import settings
 from services.conversation_service import load_room_turns, record_turn, turn_from_item
 from services.pause_service import PauseController
-from services.redis_service import get_session_identity, get_session_topic
+from services.redis_service import (
+    get_session_identity,
+    get_session_source,
+    get_session_topic,
+)
 
 load_dotenv()
 
@@ -42,9 +46,14 @@ async def entrypoint(ctx: JobContext) -> None:
     # Read the topic and identity the student set before joining
     topic = safe_topic(await get_session_topic(ctx.room.name))
     identity = await get_session_identity(ctx.room.name)
+    source = await get_session_source(ctx.room.name)
     prior_turns = await load_room_turns(ctx.room.name)
     logger.info(
-        "Session topic=%s identity=%s prior_turns=%d", topic, identity, len(prior_turns)
+        "Session topic=%s source=%s identity=%s prior_turns=%d",
+        topic,
+        source,
+        identity,
+        len(prior_turns),
     )
 
     session = AgentSession(
@@ -142,6 +151,7 @@ async def entrypoint(ctx: JobContext) -> None:
             room_name=ctx.room.name,
             identity=identity,
             prior_turns=prior_turns,
+            source=source,
         ),
     )
 

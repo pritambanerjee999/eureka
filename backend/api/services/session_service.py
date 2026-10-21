@@ -18,6 +18,7 @@ async def create_session(
     room_name: str,
     identity: str,
     topic: str | None = None,
+    source: str | None = None,
 ) -> dict:
     """Create a new active session entry in Redis for a room and participant.
 
@@ -29,10 +30,12 @@ async def create_session(
         room_name: The LiveKit room identifier.
         identity: The participant identity joining the room.
         topic: Optional topic key the student selected before joining.
+        source: Where the topic came from; ``"plan"`` when picked from the
+            study plan, so the agent starts teaching without a subtopic menu.
 
     Returns:
         A dict containing ``identity``, ``created_at``, ``status``, and
-        optionally ``topic`` keys.
+        optionally ``topic`` and ``source`` keys.
     """
     r = aioredis.from_url(settings.REDIS_URL)
     try:
@@ -43,6 +46,8 @@ async def create_session(
         }
         if topic:
             session_data["topic"] = topic
+        if source:
+            session_data["source"] = source
         key = f"session:{room_name}"
         await r.hset(key, mapping=session_data)
         await r.expire(key, SESSION_TTL)
@@ -86,20 +91,23 @@ async def end_session(room_name: str) -> None:
         await r.aclose()
 
 
-async def hit_rate_limit(identity: str, limit: int, window_seconds: int = 60) -> bool:
-    """Count a ``/token`` call against a fixed-window per-user limit.
+async def hit_rate_limit(
+    identity: str, limit: int, window_seconds: int = 60, scope: str = "token"
+) -> bool:
+    """Count a call against a fixed-window per-user limit.
 
     Args:
         identity: The authenticated user.
         limit: Maximum calls allowed per window.
         window_seconds: Window length in seconds.
+        scope: Which endpoint's counter to use (``"token"``, ``"study_plan"``).
 
     Returns:
         ``True`` if this call exceeds the limit and should be rejected.
     """
     r = aioredis.from_url(settings.REDIS_URL)
     try:
-        key = f"ratelimit:token:{identity}"
+        key = f"ratelimit:{scope}:{identity}"
         count = await r.incr(key)
         if count == 1:
             await r.expire(key, window_seconds)

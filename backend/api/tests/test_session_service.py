@@ -244,3 +244,33 @@ class TestSwapActiveRoom:
             from services.session_service import swap_active_room
 
             assert await swap_active_room("alice", "room-new") is None
+
+
+class TestSessionSourceAndScope:
+    @pytest.mark.asyncio
+    async def test_create_session_stores_source(self):
+        r = _make_redis_mock()
+        with patch("services.session_service.aioredis.from_url", return_value=r):
+            from services.session_service import create_session
+
+            result = await create_session("room-3", "alice", topic="Momentum", source="plan")
+        assert result["source"] == "plan"
+
+    @pytest.mark.asyncio
+    async def test_create_session_without_source_omits_field(self):
+        r = _make_redis_mock()
+        with patch("services.session_service.aioredis.from_url", return_value=r):
+            from services.session_service import create_session
+
+            result = await create_session("room-4", "alice", topic="Momentum")
+        assert "source" not in result
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_scope_selects_key(self):
+        r = _make_redis_mock()
+        r.incr = AsyncMock(return_value=1)
+        with patch("services.session_service.aioredis.from_url", return_value=r):
+            from services.session_service import hit_rate_limit
+
+            await hit_rate_limit("alice", 10, scope="study_plan")
+        r.incr.assert_awaited_once_with("ratelimit:study_plan:alice")

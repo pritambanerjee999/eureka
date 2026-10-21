@@ -248,3 +248,22 @@ class TestTokenGuardrails:
         client, _, rl_mock, _, _, _ = guarded
         rl_mock.side_effect = ConnectionError("redis down")
         assert client.post("/token", json={}).status_code == 503
+
+
+class TestFromPlan:
+    def test_from_plan_marks_session_source(self, client_with_mocks):
+        """A topic picked from the study plan is stored with source=plan."""
+        client, cs_mock, _ = client_with_mocks
+        resp = client.post("/token", json={"topic": "Momentum", "from_plan": True})
+        assert resp.status_code == 200
+        assert cs_mock.call_args.kwargs["source"] == "plan"
+
+    def test_default_has_no_source(self, client_with_mocks):
+        client, cs_mock, _ = client_with_mocks
+        client.post("/token", json={"topic": "Momentum"})
+        assert cs_mock.call_args.kwargs["source"] is None
+
+    def test_from_plan_without_topic_has_no_source(self, client_with_mocks):
+        client, cs_mock, _ = client_with_mocks
+        client.post("/token", json={"from_plan": True})
+        assert cs_mock.call_args.kwargs["source"] is None
