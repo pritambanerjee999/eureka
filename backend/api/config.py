@@ -24,6 +24,9 @@ class Settings(BaseSettings):
         JWT_EXPIRE_HOURS: Lifetime of a user access token in hours.
         CORS_ORIGINS: Comma-separated browser origins allowed to call the API.
         TOKEN_RATE_LIMIT_PER_MINUTE: Max ``/token`` calls per user per minute.
+        OPENAI_API_KEY: Key for the study-plan LLM call.
+        STUDY_PLAN_MODEL: OpenAI model that suggests the next topics.
+        STUDY_PLAN_RATE_LIMIT_PER_MINUTE: Max ``/study-plan`` calls per user per minute.
     """
 
     LIVEKIT_API_KEY: str
@@ -34,6 +37,9 @@ class Settings(BaseSettings):
     AGENT_NAME: str = "eureka-tutor"
     CORS_ORIGINS: str = "http://localhost:3000"
     TOKEN_RATE_LIMIT_PER_MINUTE: int = 5
+    OPENAI_API_KEY: str
+    STUDY_PLAN_MODEL: str = "gpt-4o-mini"
+    STUDY_PLAN_RATE_LIMIT_PER_MINUTE: int = 10
 
     @field_validator("JWT_SECRET")
     @classmethod

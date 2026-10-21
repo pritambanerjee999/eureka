@@ -55,7 +55,12 @@ async def get_token(
                 status_code=429, detail="Too many sessions started. Please wait a minute."
             )
         previous_room = await swap_active_room(identity, room_name)
-        await create_session(room_name, identity, topic=request.topic)
+        await create_session(
+            room_name,
+            identity,
+            topic=request.topic,
+            source="plan" if request.from_plan and request.topic else None,
+        )
     except HTTPException:
         raise
     except Exception as e:

@@ -72,7 +72,7 @@ JWT_SECRET=<the 64-character hex string from step 2>
 |---|---|---|---|
 | `LIVEKIT_URL` | yes | — | LiveKit Cloud WebSocket URL |
 | `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | yes | — | Signs room tokens and dispatches the agent |
-| `OPENAI_API_KEY` | yes | — | Speech-to-text, the tutor model and the voice |
+| `OPENAI_API_KEY` | yes | — | Speech-to-text, the tutor model and the voice, plus the study-plan suggestions (API) |
 | `JWT_SECRET` | yes | — | Signs login tokens. The API won't start if it's under 32 characters or still the placeholder. |
 | `REDIS_URL` | yes | `redis://redis:6379` | Compose service address. Leave as is. |
 | `DATABASE_URL` | yes | `postgresql://eureka:eureka@postgres:5432/eureka` | Compose service address. Leave as is. If you change `POSTGRES_PASSWORD`, change the password here too. |
@@ -80,6 +80,8 @@ JWT_SECRET=<the 64-character hex string from step 2>
 | `NEXT_PUBLIC_API_URL` | yes | `http://localhost:8000` | Where the browser finds the API. Built into the frontend, so rebuild after changing it. |
 | `CORS_ORIGINS` | no | `http://localhost:3000` | Browser origins allowed to call the API |
 | `TOKEN_RATE_LIMIT_PER_MINUTE` | no | `5` | Sessions a user can start per minute |
+| `STUDY_PLAN_MODEL` | no | `gpt-4o-mini` | Model that suggests the next three topics |
+| `STUDY_PLAN_RATE_LIMIT_PER_MINUTE` | no | `10` | Study-plan requests a user can make per minute |
 | `MAX_SESSION_SECONDS` | no | `1800` | Hard cap on a session's length |
 | `USER_AWAY_SECONDS` | no | `180` | End a session after this long without the student speaking |
 | `MAX_PAUSE_SECONDS` | no | `600` | End a session that stays paused this long |
@@ -144,7 +146,7 @@ docker compose exec agent python -m pytest -q    # Agent: tutor behaviour, guard
 docker compose --profile test run --rm frontend-test   # Frontend: Jest + React Testing Library
 ```
 
-Expected results: **140 passed**, **94 passed** and **78 passed** (8 suites).
+Expected results: **167 passed**, **99 passed** and **87 passed** (9 suites).
 
 ### Manual test script (about 5 minutes)
 
@@ -197,6 +199,8 @@ Browser (Next.js :3000)
   │
   ├── GET /history, GET|PUT /notes, PUT /sessions/…/title  (Bearer JWT, own data only) ──► FastAPI ──► PostgreSQL
   │
+  ├── GET /study-plan/{user}  (Bearer JWT) ──► FastAPI ──► Redis cache (24 h) ──► PostgreSQL session headers ──► gpt-4o-mini
+  │
   └── WebRTC audio ◄──────────────► LiveKit Cloud ◄────► Agent worker (agent)
                                                             ├── Silero VAD
                                                             ├── OpenAI Whisper (STT)
@@ -222,9 +226,11 @@ There are five Docker services: `redis`, `postgres`, `api`, `agent` and `fronten
 
 | Store | Key / table | Holds | Lifetime |
 |---|---|---|---|
-| Redis | `session:{room}` (hash) | identity, topic, status. Written by the API, read by the agent on join. | 2 h TTL |
+| Redis | `session:{room}` (hash) | identity, topic, status, and `source=plan` for study-plan picks. Written by the API, read by the agent on join. | 2 h TTL |
 | Redis | `conversation:{room}` (list) | the live conversation for that room, one JSON turn per entry, capped at 200 | 24 h TTL |
 | Redis | `user_room:{user}`, `ratelimit:token:{user}` | the user's one live room; the `/token` rate-limit counter | 2 h / 60 s |
+| Redis | `study_plan:headers:{user}`, `study_plan:topics:{user}` | the session headers sent to the LLM; its three suggested topics | 24 h TTL |
+| Redis | `ratelimit:study_plan:{user}` | the `/study-plan` rate-limit counter | 60 s |
 | Redis | `active_rooms` (set) | every room `/token` has created (informational; nothing reads it yet) | no TTL, see limitations |
 | PostgreSQL | `users` | username, scrypt password hash | durable |
 | PostgreSQL | `conversations` | every turn plus `session_start`, `checkpoint` and `level` records, keyed by user | durable |
@@ -247,6 +253,7 @@ There are five Docker services: `redis`, `postgres`, `api`, `agent` and `fronten
 
 - **Accounts.** Username/password sign-up and login. History, notes and assessed level all belong to the account, so they follow you across browsers and devices.
 - **Chat-style history sidebar.** Past sessions sit in a left sidebar grouped by *Today / Yesterday / Previous 7 days / Older*, like a chat app. Click one to reread the transcript, see what you understood and your notes, and **Continue this topic** with one click. History buried at the bottom of a page doesn't get used; a sidebar does. Hover a session and click the pencil to **rename** it (handy when several sessions share a topic). You can hide the sidebar for more room.
+- **Plan my next lesson.** A button in the top bar lists three suggested next topics, each with a one-line reason. Click one and the tutor starts teaching it straight away, without the usual "pick one of three subtopics" step. The suggestions come from the session headers in your history (the sidebar titles). Only those titles go to the LLM, never transcripts or notes, so a plan costs about a hundred tokens. Both the headers and the suggestions are cached in Redis for 24 hours, so repeat clicks are free and instant. The tradeoff is that a lesson finished today shows up in the plan only after the cache expires.
 - **Level picker + spoken assessment.** Five levels (Spark → Singularity) tune the topic suggestions. **Assess My Level** runs a three-question spoken calibration. The agent saves the result with a tool call, and the UI preselects it next time.
 - **Topic grid.** Six branches of physics (mechanics, waves, electromagnetism, thermodynamics, quantum, relativity) with level-appropriate starter questions. Clicking one starts a session where Eureka speaks first: one vivid hook, three directions to explore, and a question about which one you want. The opening can't be interrupted by background noise. **New session** starts an open "ask me anything" session.
 - **Understanding checkpoints.** When a student explains a concept in their own words, the agent calls `save_progress`, and the result shows up as a ✓ badge in history. This rewards understanding rather than time spent.

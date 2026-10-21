@@ -40,14 +40,14 @@ Python tests also run without Docker from a root venv (`python3 -m venv .venv &&
 
 Three services plus Redis and Postgres (only ports 3000 and 8000 are published; Redis/Postgres are internal by design — don't add host ports).
 
-- **`backend/api`** (FastAPI): auth (`/auth/*`, JWT HS256, stdlib scrypt), `/token` (issues LiveKit room token and explicitly dispatches the agent), history/notes/session-title endpoints. Routers in `routers/`, logic in `services/`, auth deps in `dependencies.py`.
+- **`backend/api`** (FastAPI): auth (`/auth/*`, JWT HS256, stdlib scrypt), `/token` (issues LiveKit room token and explicitly dispatches the agent), history/notes/session-title endpoints, and `/study-plan/{identity}` (sends only session headers to `STUDY_PLAN_MODEL`; headers and suggestions are cached in Redis for 24 h). Routers in `routers/`, logic in `services/`, auth deps in `dependencies.py`.
 - **`backend/agent`** (LiveKit Agents worker): `main.py` builds the STT (whisper-1) → LLM (gpt-4o) → TTS pipeline with Silero VAD, wires room/session events, and enforces session limits; `agent.py` is `PhysicsTutorAgent` (intro logic, `save_progress`/`save_level` tools, per-turn scope reminder); `prompts.py` holds the system prompt; `services/` handle Redis, Postgres, conversation persistence and pause.
 - **`frontend`** (Next.js 14, Tailwind, `@livekit/components-react`): single page `src/app/page.tsx` + `src/components/`. JWT kept in `localStorage` (`src/lib/auth.ts`).
 
 ### Request flow / cross-service contracts
 
 1. Browser logs in → JWT. The username is also the LiveKit participant identity; the client never chooses identity or room name.
-2. `POST /token` generates `room-<uuid4>`, writes Redis hash `session:{room}` (identity, topic, status), enforces rate limit (`ratelimit:token:{user}`) and one live room per user (`user_room:{user}`, closing the previous room), then dispatches the agent **by name** (`AGENT_NAME`, default `eureka-tutor`). The worker is named so LiveKit's auto-dispatch is disabled — otherwise two agents join each room. `AGENT_NAME` must match in both services.
+2. `POST /token` generates `room-<uuid4>`, writes Redis hash `session:{room}` (identity, topic, status, and `source=plan` when the topic came from the study plan), enforces rate limit (`ratelimit:token:{user}`) and one live room per user (`user_room:{user}`, closing the previous room), then dispatches the agent **by name** (`AGENT_NAME`, default `eureka-tutor`). The worker is named so LiveKit's auto-dispatch is disabled — otherwise two agents join each room. `AGENT_NAME` must match in both services.
 3. Agent joins, reads `session:{room}` for topic + identity, and restores any `conversation:{room}` turns (resume after worker restart → skips the intro).
 4. Every turn (`conversation_item_added`) is written concurrently to Redis `conversation:{room}` (capped list, 24h TTL) and Postgres `conversations`; a failure in one store must not block the other. Postgres also holds `session_start`, `checkpoint` and `level` records in the same table, which the history UI uses to group sessions.
 5. Pause/resume: the browser sets participant attribute `paused` = `"1"`/`"0"` (`SessionControls.tsx`); `PauseController` in the agent reacts. Sessions end on user-away timeout, max pause, or max duration.

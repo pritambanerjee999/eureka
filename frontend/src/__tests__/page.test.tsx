@@ -354,6 +354,52 @@ describe("Home page — token request", () => {
   });
 });
 
+describe("Home page — study plan", () => {
+  it("lists the suggested topics and starts a plan session on pick", async () => {
+    routeFetch({
+      "/study-plan/alice": () =>
+        makeOkResponse({ topics: [{ topic: "Spinning Tops", reason: "Builds on Light" }] }),
+    });
+    await renderHome();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Plan my next lesson"));
+    });
+    expect(await screen.findByText("Spinning Tops")).toBeInTheDocument();
+    const planCall = mockFetch.mock.calls.find((c) => String(c[0]).includes("/study-plan/alice"));
+    expect(authHeader(planCall!)).toBe("Bearer stored-jwt");
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Spinning Tops"));
+    });
+    await waitFor(() => {
+      const tokenCall = mockFetch.mock.calls.find((c) => String(c[0]).includes("/token"));
+      expect(JSON.parse(tokenCall![1].body)).toEqual({ topic: "Spinning Tops", from_plan: true });
+    });
+  });
+
+  it("shows an error when the plan request fails", async () => {
+    routeFetch({ "/study-plan": () => makeErrorResponse(503) });
+    await renderHome();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Plan my next lesson"));
+    });
+    expect(await screen.findByText(/Couldn't plan your next lesson/)).toBeInTheDocument();
+  });
+
+  it("menu topic picks don't send from_plan", async () => {
+    await renderHome();
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Assess My Level/i));
+    });
+    await waitFor(() => {
+      const tokenCall = mockFetch.mock.calls.find((c) => String(c[0]).includes("/token"));
+      expect(JSON.parse(tokenCall![1].body)).toEqual({ topic: "__assess__" });
+    });
+  });
+});
+
 describe("Home page — disconnect", () => {
   it("returns to landing page after disconnect", async () => {
     await renderHome();

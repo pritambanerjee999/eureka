@@ -16,6 +16,7 @@ import AuthForm from "@/components/AuthForm";
 import HistorySidebar from "@/components/HistorySidebar";
 import SessionDetail from "@/components/SessionDetail";
 import SiteFooter from "@/components/SiteFooter";
+import StudyPlan, { type PlanTopic } from "@/components/StudyPlan";
 import { type Level } from "@/data/topics";
 import { authFetch, clearAuthToken, getAuthToken, setAuthToken } from "@/lib/auth";
 import {
@@ -93,6 +94,8 @@ export default function Home() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Study plan suggestions: undefined = hidden, null = loading. */
+  const [plan, setPlan] = useState<PlanTopic[] | null | undefined>(undefined);
 
   /** Restore the remembered desktop sidebar preference. */
   useEffect(() => {
@@ -127,6 +130,7 @@ export default function Home() {
     setNotes([]);
     setTitles({});
     setLevel("spark");
+    setPlan(undefined);
   }, []);
 
   /** Fetch history and notes for the signed-in user. */
@@ -192,8 +196,9 @@ export default function Home() {
    * Request a LiveKit token and enter the voice session.
    *
    * @param topic - Topic key to pass to the agent, or "__open__" for free chat.
+   * @param fromPlan - True when picked from the study plan (the tutor starts teaching at once).
    */
-  const handleConnect = async (topic?: string) => {
+  const handleConnect = async (topic?: string, fromPlan = false) => {
     if (loading) return;
     setLoading(true);
     setError(null);
@@ -201,7 +206,7 @@ export default function Home() {
       const tokenRes = await authFetch("/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: topic ?? "__open__" }),
+        body: JSON.stringify({ topic: topic ?? "__open__", ...(fromPlan && { from_plan: true }) }),
       });
       if (tokenRes.status === 401) {
         handleLogout();
@@ -253,6 +258,27 @@ export default function Home() {
     } catch {
       setTitles(previous);
       setError("Couldn't rename that session. Please try again.");
+    }
+  };
+
+  /** Show the study plan: three next topics suggested from past lessons. */
+  const handlePlan = async () => {
+    if (!user) return;
+    setSelected(null);
+    setError(null);
+    setPlan(null);
+    try {
+      const res = await authFetch(`/study-plan/${user}`);
+      if (res.status === 401) {
+        handleLogout();
+        return;
+      }
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      const data = await res.json();
+      setPlan(data.topics ?? []);
+    } catch {
+      setPlan(undefined);
+      setError("Couldn't plan your next lesson. Please try again.");
     }
   };
 
@@ -357,6 +383,15 @@ export default function Home() {
             )}
             <div className="flex-1" />
             <button
+              onClick={handlePlan}
+              disabled={loading || plan === null}
+              className="px-4 py-2 rounded-xl text-sm font-medium border border-white/10 text-white/70
+                         hover:text-white hover:bg-white/5 hover:border-white/20
+                         transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Plan my next lesson
+            </button>
+            <button
               onClick={handleAssess}
               disabled={loading}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium
@@ -418,6 +453,15 @@ export default function Home() {
                 Ask anything. Build real intuition. No textbooks.
               </p>
             </section>
+
+            {plan !== undefined && (
+              <StudyPlan
+                topics={plan}
+                loading={loading}
+                onPick={(topic) => handleConnect(topic, true)}
+                onClose={() => setPlan(undefined)}
+              />
+            )}
 
             {/* ── Level picker ── */}
             <section className="max-w-5xl mx-auto px-6 mb-8">
